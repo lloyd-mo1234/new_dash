@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swap Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <div class="navigation">
+            <a href="/" class="nav-link active">Charts</a>
+            <a href="#" id="regression-link" class="nav-link">Regression</a>
+        </div>
+
+        <!-- Chart controls above chart -->
+        <div class="chart-controls">
+            <button id="load-curves-btn" class="load-curves-button">
+                <span class="load-button-text">Load Curves</span>
+                <span class="load-loading-spinner" style="display: none;">⟳</span>
+            </button>
+            
+            <button id="load-realtime-btn" class="load-realtime-button">
+                <span class="realtime-button-text">Load Real-time Data</span>
+                <span class="realtime-loading-spinner" style="display: none;">⟳</span>
+            </button>
+            
+            <button id="update-btn" class="update-button">
+                <span class="button-text">Update Chart</span>
+                <span class="loading-spinner" style="display: none;">⟳</span>
+            </button>
+            
+            <!-- Date selector buttons -->
+            <button class="range-btn" data-range="1M">1M</button>
+            <button class="range-btn" data-range="3M">3M</button>
+            <button class="range-btn" data-range="6M">6M</button>
+            <button class="range-btn" data-range="1Y">1Y</button>
+            <button class="range-btn" data-range="3Y">3Y</button>
+            <button class="range-btn" data-range="5Y">5Y</button>
+            <button class="range-btn" data-range="10Y">10Y</button>
+            <button class="range-btn active" data-range="MAX">Max</button>
+            
+            <!-- Custom date range selector -->
+            <div class="custom-date-range">
+                <span class="date-label">From:</span>
+                <input type="text" id="from-date" class="date-input" placeholder="030520 or 3 May 2020">
+                <span class="date-label">To:</span>
+                <input type="text" id="to-date" class="date-input" placeholder="030521 or 3 May 2021">
+                <button id="apply-custom-range" class="apply-date-btn">Apply</button>
+            </div>
+        </div>
+
+        <!-- Chart area -->
+        <div class="chart-container">
+            <div id="chart-area">
+                <div class="placeholder">
+                    <h3>Ready to Display Charts</h3>
+                    <p>Enter tenor syntax and click "Update Chart" to begin</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Input controls at bottom -->
+        <div class="controls">
+            <div class="controls-layout">
+                <div class="add-input-section">
+                    <button id="add-input-btn" class="add-input-button">
+                        <span>+ Add Input</span>
+                    </button>
+                </div>
+                
+                <div class="syntax-help-container">
+                    <button id="syntax-help-btn" class="syntax-help-button" title="Syntax Help">
+                        <span class="help-icon">?</span>
+                    </button>
+                    <div id="syntax-help-popup" class="syntax-help-popup" style="display: none;">
+                        <div class="help-content">
+                            <h3>Tenor Syntax Guide</h3>
+                            <div class="help-section">
+                                <h4>Outright Rates:</h4>
+                                <p><code>aud.10y</code> = Spot-10y rate (0y10y)</p>
+                                <p><code>aud.5y5y</code> = 5y5y forward rate</p>
+                                <p><code>aud.130526.1y</code> = Fixed-date swap (13 May 2026 start, 1y tenor)</p>
+                            </div>
+                            <div class="help-section">
+                                <h4>Spreads:</h4>
+                                <p><code>aud.5y.10y</code> = 10y less 5y (spot starting spread)</p>
+                                <p><code>aud.5y5y.10y10y</code> = 10y10y less 5y5y</p>
+                            </div>
+                            <div class="help-section">
+                                <h4>Butterfly:</h4>
+                                <p><code>aud.5y5y.10y10y.20y10y</code> = 2×10y10y - 5y5y - 20y10y</p>
+                            </div>
+                            <div class="help-section">
+                                <h4>Currency Templates:</h4>
+                                <p><strong>AUD:</strong> <code>aud</code> (IRS), <code>audxc</code> (AONIA-SOFR), <code>audbs</code> (BBSW-SOFR), <code>audbob</code> (BOB-3M), <code>aud6s3s</code> (6s3s basis)</p>
+                                <p><strong>EUR:</strong> <code>eur</code> (IRS), <code>eurxc</code> (ESTR-SOFR), <code>eurbob</code> (ESTR-EURIBOR3M), <code>eur6s3s</code> (6s3s basis)</p>
+                                <p><strong>GBP:</strong> <code>gbp</code> (OIS), <code>gbpxc</code> (SONIA-SOFR)</p>
+                                <p><strong>JPY:</strong> <code>jpy</code> (OIS), <code>jpyxc</code> (TONAR-SOFR)</p>
+                                <p><strong>CAD:</strong> <code>cad</code> (OIS), <code>cadxc</code> (CORRA-SOFR)</p>
+                                <p><strong>NZD:</strong> <code>nzd</code> (IRS), <code>nzdxc</code> (NZOCR-SOFR), <code>nzdbs</code> (BKBM-SOFR)</p>
+                                <p><strong>USD:</strong> <code>usd</code> (SOFR)</p>
+                            </div>
+                            <div class="help-section">
+                                <h4>Examples:</h4>
+                                <p><code>eurxc.5y5y</code> = EUR cross-currency 5y5y (ESTR-SOFR)</p>
+                                <p><code>aud6s3s.10y</code> = AUD 6s3s basis spot-10y</p>
+                                <p><code>gbpxc.2y.5y</code> = GBP cross-currency 5y-2y spread</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="inputs-section">
+                    <div class="input-group" data-input-id="1">
+                        <label class="input-label">A</label>
+                        <input 
+                            type="text" 
+                            id="tenor-input-1" 
+                            placeholder="aud.1y1y" 
+                            value="aud.1y1y"
+                        />
+                        <div class="realtime-rate" id="realtime-rate-1">--</div>
+                        <div class="button-controls">
+                            <button class="axis-btn active" data-axis="left" title="Left Axis">L</button>
+                            <button class="axis-btn" data-axis="right" title="Right Axis">R</button>
+                            <button class="visibility-btn active" title="Show/Hide Line">👁</button>
+                            <button class="delete-btn" title="Delete">×</button>
+                        </div>
+                    </div>
+                    <div class="input-group" data-input-id="2">
+                        <label class="input-label">B</label>
+                        <input 
+                            type="text" 
+                            id="tenor-input-2" 
+                            placeholder="aud.2y2y or aud.5y5y.10y10y or 2*A or b-a" 
+                            value=""
+                        />
+                        <div class="realtime-rate" id="realtime-rate-2">--</div>
+                        <div class="button-controls">
+                            <button class="axis-btn active" data-axis="left" title="Left Axis">L</button>
+                            <button class="axis-btn" data-axis="right" title="Right Axis">R</button>
+                            <button class="visibility-btn active" title="Show/Hide Line">👁</button>
+                            <button class="delete-btn" title="Delete">×</button>
+                        </div>
+                    </div>
+                    <div class="input-group" data-input-id="3">
+                        <label class="input-label">C</label>
+                        <input 
+                            type="text" 
+                            id="tenor-input-3" 
+                            placeholder="aud.5y5y.10y10y.20y10y or 2*B-A-C" 
+                            value=""
+                        />
+                        <div class="realtime-rate" id="realtime-rate-3">--</div>
+                        <div class="button-controls">
+                            <button class="axis-btn active" data-axis="left" title="Left Axis">L</button>
+                            <button class="axis-btn" data-axis="right" title="Right Axis">R</button>
+                            <button class="visibility-btn active" title="Show/Hide Line">👁</button>
+                            <button class="delete-btn" title="Delete">×</button>
+                        </div>
+                    </div>
+                    <div class="input-group" data-input-id="4">
+                        <label class="input-label">D</label>
+                        <input 
+                            type="text" 
+                            id="tenor-input-4" 
+                            placeholder="aud.10y10y" 
+                            value=""
+                        />
+                        <div class="realtime-rate" id="realtime-rate-4">--</div>
+                        <div class="button-controls">
+                            <button class="axis-btn active" data-axis="left" title="Left Axis">L</button>
+                            <button class="axis-btn" data-axis="right" title="Right Axis">R</button>
+                            <button class="visibility-btn active" title="Show/Hide Line">👁</button>
+                            <button class="delete-btn" title="Delete">×</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="error-message" class="error-message" style="display: none;"></div>
+    </div>
+
+
+    <script>
+        const updateBtn = document.getElementById('update-btn');
+        const loadCurvesBtn = document.getElementById('load-curves-btn');
+        const loadRealtimeBtn = document.getElementById('load-realtime-btn');
+        const addInputBtn = document.getElementById('add-input-btn');
+        const controlsContainer = document.querySelector('.controls');
+        const chartArea = document.getElementById('chart-area');
+        const errorMessage = document.getElementById('error-message');
+        const buttonText = document.querySelector('.button-text');
+        const loadingSpinner = document.querySelector('.loading-spinner');
+        const rangeButtons = document.querySelectorAll('.range-btn');
+        const fromDateInput = document.getElementById('from-date');
+        const toDateInput = document.getElementById('to-date');
+        const applyCustomRangeBtn = document.getElementById('apply-custom-range');
+        
+        let tenorInputs = [
+            document.getElementById('tenor-input-1'),
+            document.getElementById('tenor-input-2'),
+            document.getElementById('tenor-input-3'),
+            document.getElementById('tenor-input-4')
+        ];
+        let inputCounter = 4;
+        let currentRange = 'MAX';
+        let progressInterval = null;
+        let curvesLoaded = false;
+        let chartUpdateInProgress = false;
+        let chartUpdateTimeout = null;
+        
+        // Currency colors matching CSS
+        const currencyColors = {
+            'aud': '#ff6b6b',
+            'eur': '#51cf66', 
+            'gbp': '#ffd43b',
+            'jpy': '#9775fa',
+            'nzd': '#ff9f43',
+            'cad': '#a55eea'
+        };
+        
+        // Chart line colors (same as in Python)
+        const chartColors = ['#00d4ff', '#ff6b6b', '#51cf66', '#ffd43b', '#9775fa', '#ff9f43', '#a55eea', '#26de81'];
+
+        // Shared state management functions
+        function saveSharedState() {
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            const sharedState = [];
+            
+            inputGroups.forEach((group) => {
+                const input = group.querySelector('input');
+                const label = group.querySelector('.input-label').textContent;
+                const activeAxisBtn = group.querySelector('.axis-btn.active');
+                const visibilityBtn = group.querySelector('.visibility-btn');
+                
+                sharedState.push({
+                    label: label,
+                    value: input.value,
+                    axis: activeAxisBtn ? activeAxisBtn.getAttribute('data-axis') : 'left',
+                    visible: visibilityBtn ? visibilityBtn.classList.contains('active') : true,
+                    inputId: group.getAttribute('data-input-id')
+                });
+            });
+            
+            // Also save curve loading state and preserve regression selections if they exist
+            const savedState = localStorage.getItem('dashboardSharedState');
+            let existingRegressionSelections = null;
+            
+            if (savedState) {
+                try {
+                    const existingGlobalState = JSON.parse(savedState);
+                    if (!Array.isArray(existingGlobalState) && existingGlobalState.regressionSelections) {
+                        existingRegressionSelections = existingGlobalState.regressionSelections;
+                    }
+                } catch (error) {
+                    console.error('Error preserving regression selections:', error);
+                }
+            }
+            
+            const globalState = {
+                inputs: sharedState,
+                curvesLoaded: curvesLoaded,
+                inputCounter: inputCounter,
+                regressionSelections: existingRegressionSelections
+            };
+            
+            localStorage.setItem('dashboardSharedState', JSON.stringify(globalState));
+        }
+
+        function loadSharedState() {
+            const savedState = localStorage.getItem('dashboardSharedState');
+            if (savedState) {
+                try {
+                    const globalState = JSON.parse(savedState);
+                    
+                    // Handle both old format (array) and new format (object)
+                    let sharedState, savedCurvesLoaded, savedInputCounter;
+                    
+                    if (Array.isArray(globalState)) {
+                        // Old format - just inputs
+                        sharedState = globalState;
+                        savedCurvesLoaded = false;
+                        savedInputCounter = globalState.length;
+                    } else {
+                        // New format - object with inputs and state
+                        sharedState = globalState.inputs || [];
+                        savedCurvesLoaded = globalState.curvesLoaded || false;
+                        savedInputCounter = globalState.inputCounter || sharedState.length;
+                    }
+                    
+                    // Restore curve loading state from localStorage as initial state
+                    curvesLoaded = savedCurvesLoaded;
+                    updateLoadButtonState(curvesLoaded);
+                    
+                    // Clear existing inputs first
+                    const existingInputs = document.querySelectorAll('.input-group[data-input-id]');
+                    existingInputs.forEach(group => group.remove());
+                    
+                    // Reset tenorInputs array
+                    tenorInputs = [];
+                    
+                    // Recreate all inputs from shared state
+                    const inputsSection = document.querySelector('.inputs-section');
+                    
+                    sharedState.forEach((state, index) => {
+                        // Create input group for each state entry
+                        const inputGroup = document.createElement('div');
+                        inputGroup.className = 'input-group';
+                        inputGroup.setAttribute('data-input-id', state.inputId);
+                        
+                        const label = document.createElement('label');
+                        label.className = 'input-label';
+                        label.textContent = state.label;
+                        
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.id = `tenor-input-${state.inputId}`;
+                        input.placeholder = index === 0 ? 'aud.1y1y' : `aud.${state.label.toLowerCase()}.${state.label.toLowerCase()}`;
+                        input.value = state.value;
+                        
+                        const buttonControls = document.createElement('div');
+                        buttonControls.className = 'button-controls';
+                        
+                        const leftBtn = document.createElement('button');
+                        leftBtn.className = `axis-btn ${state.axis === 'left' ? 'active' : ''}`;
+                        leftBtn.setAttribute('data-axis', 'left');
+                        leftBtn.setAttribute('title', 'Left Axis');
+                        leftBtn.textContent = 'L';
+                        
+                        const rightBtn = document.createElement('button');
+                        rightBtn.className = `axis-btn ${state.axis === 'right' ? 'active' : ''}`;
+                        rightBtn.setAttribute('data-axis', 'right');
+                        rightBtn.setAttribute('title', 'Right Axis');
+                        rightBtn.textContent = 'R';
+                        
+                        const visibilityBtn = document.createElement('button');
+                        visibilityBtn.className = `visibility-btn ${state.visible ? 'active' : ''}`;
+                        visibilityBtn.setAttribute('title', 'Show/Hide Line');
+                        visibilityBtn.textContent = state.visible ? '👁' : '🙈';
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-btn';
+                        deleteBtn.setAttribute('title', 'Delete');
+                        deleteBtn.textContent = '×';
+                        
+                        buttonControls.appendChild(leftBtn);
+                        buttonControls.appendChild(rightBtn);
+                        buttonControls.appendChild(visibilityBtn);
+                        buttonControls.appendChild(deleteBtn);
+                        
+            const realtimeRate = document.createElement('div');
+            realtimeRate.className = 'realtime-rate';
+            realtimeRate.id = `realtime-rate-${state.inputId}`;
+            realtimeRate.textContent = '--';
+            
+            inputGroup.appendChild(label);
+            inputGroup.appendChild(input);
+            inputGroup.appendChild(realtimeRate);
+            inputGroup.appendChild(buttonControls);
+                        
+                        inputsSection.appendChild(inputGroup);
+                        tenorInputs.push(input);
+                        
+                        // Add event listeners
+                        input.addEventListener('keypress', function(e) {
+                            if (e.key === 'Enter') {
+                                updateChart();
+                            }
+                        });
+                        
+                        input.addEventListener('input', saveSharedState);
+                        
+                        setupButtonListeners(inputGroup);
+                    });
+                    
+                    inputCounter = savedInputCounter;
+                    updateLabelColors();
+                } catch (error) {
+                    console.error('Error loading shared state:', error);
+                }
+            }
+        }
+
+        function addInputBoxFromState(state) {
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group';
+            inputGroup.setAttribute('data-input-id', state.inputId);
+            
+            const label = document.createElement('label');
+            label.className = 'input-label';
+            label.textContent = state.label;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = `tenor-input-${state.inputId}`;
+            input.placeholder = `aud.${state.label.toLowerCase()}.${state.label.toLowerCase()}`;
+            input.value = state.value;
+            
+            const buttonControls = document.createElement('div');
+            buttonControls.className = 'button-controls';
+            
+            const leftBtn = document.createElement('button');
+            leftBtn.className = `axis-btn ${state.axis === 'left' ? 'active' : ''}`;
+            leftBtn.setAttribute('data-axis', 'left');
+            leftBtn.setAttribute('title', 'Left Axis');
+            leftBtn.textContent = 'L';
+            
+            const rightBtn = document.createElement('button');
+            rightBtn.className = `axis-btn ${state.axis === 'right' ? 'active' : ''}`;
+            rightBtn.setAttribute('data-axis', 'right');
+            rightBtn.setAttribute('title', 'Right Axis');
+            rightBtn.textContent = 'R';
+            
+            const visibilityBtn = document.createElement('button');
+            visibilityBtn.className = `visibility-btn ${state.visible ? 'active' : ''}`;
+            visibilityBtn.setAttribute('title', 'Show/Hide Line');
+            visibilityBtn.textContent = state.visible ? '👁' : '🙈';
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.setAttribute('title', 'Delete');
+            deleteBtn.textContent = '×';
+            
+            buttonControls.appendChild(leftBtn);
+            buttonControls.appendChild(rightBtn);
+            buttonControls.appendChild(visibilityBtn);
+            buttonControls.appendChild(deleteBtn);
+            
+            const realtimeRate = document.createElement('div');
+            realtimeRate.className = 'realtime-rate';
+            realtimeRate.id = `realtime-rate-${inputCounter}`;
+            realtimeRate.textContent = '--';
+            
+            inputGroup.appendChild(label);
+            inputGroup.appendChild(input);
+            inputGroup.appendChild(realtimeRate);
+            inputGroup.appendChild(buttonControls);
+            
+            const inputsSection = document.querySelector('.inputs-section');
+            inputsSection.appendChild(inputGroup);
+            
+            tenorInputs.push(input);
+            
+            // Add event listeners
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    updateChart();
+                }
+            });
+            
+            input.addEventListener('input', saveSharedState);
+            
+            setupButtonListeners(inputGroup);
+        }
+
+        function parseDateInput(dateStr) {
+            if (!dateStr) return null;
+            
+            dateStr = dateStr.trim();
+            
+            // Format: 030520 (DDMMYY)
+            if (/^\d{6}$/.test(dateStr)) {
+                const day = parseInt(dateStr.substring(0, 2));
+                const month = parseInt(dateStr.substring(2, 4));
+                const year = 2000 + parseInt(dateStr.substring(4, 6));
+                const date = new Date(year, month - 1, day);
+                return formatDateToStandard(date);
+            }
+            
+            // Format: 03/05/2020 or 03/05/20 or 3/5/20
+            if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateStr)) {
+                const parts = dateStr.split('/');
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]);
+                let year = parseInt(parts[2]);
+                if (year < 100) year += 2000;
+                const date = new Date(year, month - 1, day);
+                return formatDateToStandard(date);
+            }
+            
+            // Format: "3 May 2020" or similar
+            const dateObj = new Date(dateStr);
+            if (!isNaN(dateObj.getTime())) {
+                return formatDateToStandard(dateObj);
+            }
+            
+            return null;
+        }
+
+        function formatDateToStandard(date) {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = months[date.getMonth()];
+            const year = date.getFullYear();
+            return `${day} ${month} ${year}`;
+        }
+
+        function updateLabelColors() {
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            inputGroups.forEach((group, index) => {
+                const label = group.querySelector('.input-label');
+                const input = group.querySelector('input');
+                const visibilityBtn = group.querySelector('.visibility-btn');
+                
+                // Only color if input has value and is visible
+                if (input && input.value.trim() !== '' && visibilityBtn && visibilityBtn.classList.contains('active')) {
+                    label.style.color = chartColors[index % chartColors.length];
+                } else {
+                    label.style.color = '#007acc'; // Default VS Code blue
+                }
+            });
+        }
+
+        function showLoading() {
+            buttonText.style.display = 'none';
+            loadingSpinner.style.display = 'inline';
+            updateBtn.disabled = true;
+        }
+
+        function hideLoading() {
+            buttonText.style.display = 'inline';
+            loadingSpinner.style.display = 'none';
+            updateBtn.disabled = false;
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 5000);
+        }
+
+
+        function addInputBox() {
+            // Find the next sequential letter based on what's currently displayed
+            const currentInputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            const nextLetterIndex = currentInputGroups.length; // 0=A, 1=B, 2=C, etc.
+            const letter = String.fromCharCode(65 + nextLetterIndex); // A=65, B=66, etc.
+            
+            inputCounter++; // Still increment for unique IDs
+            
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group';
+            inputGroup.setAttribute('data-input-id', inputCounter);
+            
+            const label = document.createElement('label');
+            label.className = 'input-label';
+            label.textContent = letter;
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = `tenor-input-${inputCounter}`;
+            input.placeholder = `aud.${nextLetterIndex + 1}y.${nextLetterIndex + 1}y or ${letter}-A`;
+            
+            const buttonControls = document.createElement('div');
+            buttonControls.className = 'button-controls';
+            
+            const leftBtn = document.createElement('button');
+            leftBtn.className = 'axis-btn active';
+            leftBtn.setAttribute('data-axis', 'left');
+            leftBtn.setAttribute('title', 'Left Axis');
+            leftBtn.textContent = 'L';
+            
+            const rightBtn = document.createElement('button');
+            rightBtn.className = 'axis-btn';
+            rightBtn.setAttribute('data-axis', 'right');
+            rightBtn.setAttribute('title', 'Right Axis');
+            rightBtn.textContent = 'R';
+            
+            const visibilityBtn = document.createElement('button');
+            visibilityBtn.className = 'visibility-btn active';
+            visibilityBtn.setAttribute('title', 'Show/Hide Line');
+            visibilityBtn.textContent = '👁';
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.setAttribute('title', 'Delete');
+            deleteBtn.textContent = '×';
+            
+            buttonControls.appendChild(leftBtn);
+            buttonControls.appendChild(rightBtn);
+            buttonControls.appendChild(visibilityBtn);
+            buttonControls.appendChild(deleteBtn);
+            
+            const realtimeRate = document.createElement('div');
+            realtimeRate.className = 'realtime-rate';
+            realtimeRate.id = `realtime-rate-${inputCounter}`;
+            realtimeRate.textContent = '--';
+            
+            inputGroup.appendChild(label);
+            inputGroup.appendChild(input);
+            inputGroup.appendChild(realtimeRate);
+            inputGroup.appendChild(buttonControls);
+            
+            // Insert at the end of the inputs section (after all existing inputs)
+            const inputsSection = document.querySelector('.inputs-section');
+            inputsSection.appendChild(inputGroup);
+            
+            // Add to tenorInputs array
+            tenorInputs.push(input);
+            
+            // Add event listeners
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    updateChart();
+                }
+            });
+            
+            input.addEventListener('input', saveSharedState);
+            
+            setupButtonListeners(inputGroup);
+            
+            input.focus();
+            saveSharedState();
+        }
+
+        function setupButtonListeners(inputGroup) {
+            const axisButtons = inputGroup.querySelectorAll('.axis-btn');
+            const visibilityButton = inputGroup.querySelector('.visibility-btn');
+            const deleteButton = inputGroup.querySelector('.delete-btn');
+            
+                axisButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Toggle axis selection within this input group
+                    axisButtons.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    saveSharedState();
+                    
+                    // Use debounced update to prevent rapid requests
+                    if (curvesLoaded) {
+                        debouncedUpdateChart();
+                    }
+                });
+            });
+            
+            if (visibilityButton) {
+                visibilityButton.addEventListener('click', function() {
+                    // Toggle visibility
+                    this.classList.toggle('active');
+                    // Update the eye icon based on state
+                    this.textContent = this.classList.contains('active') ? '👁' : '🙈';
+                    
+                    saveSharedState();
+                    
+                    // Use debounced update to prevent rapid requests
+                    if (curvesLoaded) {
+                        debouncedUpdateChart();
+                    }
+                });
+            }
+            
+            deleteButton.addEventListener('click', function() {
+                deleteInputGroup(inputGroup);
+            });
+        }
+
+        function deleteInputGroup(inputGroup) {
+            const inputId = inputGroup.getAttribute('data-input-id');
+            const input = inputGroup.querySelector('input');
+            
+            // Remove from tenorInputs array
+            const index = tenorInputs.indexOf(input);
+            if (index > -1) {
+                tenorInputs.splice(index, 1);
+            }
+            
+            // Remove from DOM
+            inputGroup.remove();
+            
+            // Relabel all remaining inputs sequentially
+            relabelInputs();
+            
+            saveSharedState();
+            
+            // Update chart
+            updateChart();
+        }
+
+        function relabelInputs() {
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            inputGroups.forEach((group, index) => {
+                const label = group.querySelector('.input-label');
+                const newLetter = String.fromCharCode(65 + index); // A=65, B=66, etc.
+                label.textContent = newLetter;
+                
+                // Update placeholder to reflect new label
+                const input = group.querySelector('input');
+                if (input && input.placeholder.includes('or')) {
+                    const basePlaceholder = input.placeholder.split(' or ')[0];
+                    input.placeholder = `${basePlaceholder} or ${newLetter}-A`;
+                }
+            });
+        }
+
+        function checkCurvesStatus() {
+            fetch('/curves_status')
+                .then(response => response.json())
+                .then(data => {
+                    curvesLoaded = data.loaded;
+                    if (curvesLoaded) {
+                        // Curves are loaded, update button state
+                        updateLoadButtonState(true);
+                        saveSharedState();
+                    } else {
+                        // Check again in 1 second
+                        setTimeout(checkCurvesStatus, 1000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking curves status:', error);
+                    setTimeout(checkCurvesStatus, 2000);
+                });
+        }
+
+        function updateLoadButtonState(loaded) {
+            const loadButtonText = document.querySelector('.load-button-text');
+            const loadLoadingSpinner = document.querySelector('.load-loading-spinner');
+            
+            if (loaded) {
+                // Curves are loaded - show "Curves Loaded" and change to lighter green
+                loadButtonText.textContent = 'Curves Loaded';
+                loadButtonText.style.display = 'inline';
+                loadLoadingSpinner.style.display = 'none';
+                loadCurvesBtn.disabled = false;
+                loadCurvesBtn.classList.add('curves-loaded');
+            } else {
+                // Reset to original state
+                loadButtonText.textContent = 'Load Curves';
+                loadButtonText.style.display = 'inline';
+                loadLoadingSpinner.style.display = 'none';
+                loadCurvesBtn.disabled = false;
+                loadCurvesBtn.classList.remove('curves-loaded');
+            }
+        }
+
+        function debouncedUpdateChart() {
+            // Clear any existing timeout
+            if (chartUpdateTimeout) {
+                clearTimeout(chartUpdateTimeout);
+            }
+            
+            // Set a new timeout for 500ms
+            chartUpdateTimeout = setTimeout(() => {
+                updateChart();
+            }, 500);
+        }
+
+        function updateChart() {
+            // Check if curves are loaded first
+            if (!curvesLoaded) {
+                showError('Curves are still loading. Please wait...');
+                return;
+            }
+
+            // Prevent multiple simultaneous chart updates
+            if (chartUpdateInProgress) {
+                console.log('Chart update already in progress, skipping...');
+                return;
+            }
+
+            chartUpdateInProgress = true;
+
+            // Get all input groups with their axis assignments
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            const expressions = [];
+            
+            inputGroups.forEach((group, index) => {
+                const input = group.querySelector('input');
+                const activeAxisBtn = group.querySelector('.axis-btn.active');
+                const visibilityBtn = group.querySelector('.visibility-btn');
+                const label = group.querySelector('.input-label').textContent;
+                
+                if (input && input.value.trim() !== '') {
+                    expressions.push({
+                        label: label,
+                        expression: input.value.trim(),
+                        axis: activeAxisBtn ? activeAxisBtn.getAttribute('data-axis') : 'left',
+                        visible: visibilityBtn ? visibilityBtn.classList.contains('active') : true
+                    });
+                }
+            });
+            
+            if (expressions.length === 0) {
+                showError('Please enter at least one tenor syntax');
+                chartUpdateInProgress = false;
+                return;
+            }
+
+            showLoading();
+            errorMessage.style.display = 'none';
+
+            fetch('/update_chart', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    expressions: expressions,
+                    range: currentRange
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                chartUpdateInProgress = false;
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                // Plot the chart
+                const chartData = JSON.parse(data.chart);
+                Plotly.newPlot('chart-area', chartData.data, chartData.layout, {
+                    responsive: true,
+                    displayModeBar: true,
+                    modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d'],
+                    displaylogo: false
+                });
+                
+                // Update label colors to match chart lines
+                updateLabelColors();
+            })
+            .catch(error => {
+                hideLoading();
+                chartUpdateInProgress = false;
+                showError('Network error: ' + error.message);
+            });
+        }
+
+        function loadCurves() {
+            const loadButtonText = document.querySelector('.load-button-text');
+            const loadLoadingSpinner = document.querySelector('.load-loading-spinner');
+            
+            // Show loading state on button
+            loadButtonText.style.display = 'none';
+            loadLoadingSpinner.style.display = 'inline';
+            loadCurvesBtn.disabled = true;
+            
+            // Start loading curves
+            fetch('/start_loading', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        checkCurvesStatus();
+                    } else {
+                        showError('Failed to start curve loading');
+                        // Reset button state
+                        loadButtonText.style.display = 'inline';
+                        loadLoadingSpinner.style.display = 'none';
+                        loadCurvesBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    showError('Error starting curve loading: ' + error.message);
+                    // Reset button state
+                    loadButtonText.style.display = 'inline';
+                    loadLoadingSpinner.style.display = 'none';
+                    loadCurvesBtn.disabled = false;
+                });
+        }
+
+
+        function loadRealtime() {
+            const realtimeButtonText = document.querySelector('.realtime-button-text');
+            const realtimeLoadingSpinner = document.querySelector('.realtime-loading-spinner');
+            
+            // Show loading state on button - keep text visible but show spinner
+            realtimeLoadingSpinner.style.display = 'inline';
+            loadRealtimeBtn.disabled = true;
+            
+            // Start loading real-time curves
+            fetch('/start_realtime_loading', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Start polling for completion status
+                        checkRealtimeLoadingStatus();
+                    } else {
+                        showError('Failed to start real-time loading: ' + data.message);
+                        // Reset button state
+                        realtimeLoadingSpinner.style.display = 'none';
+                        loadRealtimeBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    showError('Error starting real-time loading: ' + error.message);
+                    // Reset button state
+                    realtimeLoadingSpinner.style.display = 'none';
+                    loadRealtimeBtn.disabled = false;
+                });
+        }
+
+        function checkRealtimeLoadingStatus() {
+            const realtimeLoadingSpinner = document.querySelector('.realtime-loading-spinner');
+            
+            fetch('/realtime_loading_status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.completed) {
+                        // Real-time loading is complete
+                        realtimeLoadingSpinner.style.display = 'none';
+                        loadRealtimeBtn.disabled = false;
+                        
+                        // Update real-time rates if we have expressions
+                        setTimeout(fetchRealtimeRates, 1000);
+                    } else if (data.error) {
+                        // Error occurred
+                        showError('Real-time loading failed: ' + data.error);
+                        realtimeLoadingSpinner.style.display = 'none';
+                        loadRealtimeBtn.disabled = false;
+                    } else if (data.loading) {
+                        // Still loading, check again in 1 second
+                        setTimeout(checkRealtimeLoadingStatus, 1000);
+                    } else {
+                        // Unknown state, stop polling
+                        realtimeLoadingSpinner.style.display = 'none';
+                        loadRealtimeBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking real-time loading status:', error);
+                    // Stop polling on error
+                    realtimeLoadingSpinner.style.display = 'none';
+                    loadRealtimeBtn.disabled = false;
+                });
+        }
+
+        // Event listeners
+        updateBtn.addEventListener('click', updateChart);
+        loadCurvesBtn.addEventListener('click', loadCurves);
+        loadRealtimeBtn.addEventListener('click', loadRealtime);
+        addInputBtn.addEventListener('click', addInputBox);
+        
+        tenorInputs.forEach(input => {
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    updateChart();
+                }
+            });
+            
+            input.addEventListener('input', saveSharedState);
+        });
+
+        // Range button event listeners
+        rangeButtons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                rangeButtons.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentRange = this.dataset.range;
+                updateChart();
+            });
+        });
+
+        // Date input event listeners
+        fromDateInput.addEventListener('blur', function() {
+            const parsed = parseDateInput(this.value);
+            if (parsed) {
+                this.value = parsed;
+            }
+        });
+
+        toDateInput.addEventListener('blur', function() {
+            const parsed = parseDateInput(this.value);
+            if (parsed) {
+                this.value = parsed;
+            }
+        });
+
+        applyCustomRangeBtn.addEventListener('click', function() {
+            const fromDate = fromDateInput.value.trim();
+            const toDate = toDateInput.value.trim();
+            
+            if (!fromDate || !toDate) {
+                showError('Please enter both from and to dates');
+                return;
+            }
+            
+            // For now, just show a message that custom date ranges are not yet implemented
+            showError('Custom date ranges will be implemented in a future update');
+        });
+
+        // Setup initial button listeners for existing input groups
+        document.querySelectorAll('.input-group[data-input-id]').forEach(group => {
+            setupButtonListeners(group);
+        });
+
+        // Function to check if we have valid input expressions for auto-loading chart
+        function hasValidInputExpressions() {
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            let hasValidExpressions = false;
+            
+            inputGroups.forEach((group) => {
+                const input = group.querySelector('input');
+                const visibilityBtn = group.querySelector('.visibility-btn');
+                
+                if (input && input.value.trim() !== '' && visibilityBtn && visibilityBtn.classList.contains('active')) {
+                    hasValidExpressions = true;
+                }
+            });
+            
+            return hasValidExpressions;
+        }
+
+        function fetchRealtimeRates() {
+            // Get current expressions
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            const expressions = [];
+            
+            inputGroups.forEach((group) => {
+                const input = group.querySelector('input');
+                const label = group.querySelector('.input-label').textContent;
+                
+                if (input && input.value.trim() !== '') {
+                    expressions.push({
+                        label: label,
+                        expression: input.value.trim()
+                    });
+                }
+            });
+            
+            if (expressions.length === 0) {
+                return;
+            }
+            
+            // Fetch real-time rates
+            fetch('/get_realtime_rates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    expressions: expressions
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.rates) {
+                    // Update each real-time rate display
+                    Object.entries(data.rates).forEach(([label, rate]) => {
+                        const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+                        inputGroups.forEach((group) => {
+                            const groupLabel = group.querySelector('.input-label').textContent;
+                            if (groupLabel === label) {
+                                const realtimeRateElement = group.querySelector('.realtime-rate');
+                                if (realtimeRateElement) {
+                                    realtimeRateElement.textContent = rate;
+                                    realtimeRateElement.setAttribute('data-rate', rate);
+                                }
+                            }
+                        });
+                    });
+                } else {
+                    console.error('Error fetching real-time rates:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Network error fetching real-time rates:', error);
+            });
+        }
+
+        // Function to get current variables for transfer to regression page
+        function getCurrentVariables() {
+            const inputGroups = document.querySelectorAll('.input-group[data-input-id]');
+            const variables = [];
+            
+            inputGroups.forEach((group) => {
+                const input = group.querySelector('input');
+                const label = group.querySelector('.input-label').textContent;
+                
+                if (input && input.value.trim() !== '') {
+                    variables.push({
+                        label: label,
+                        value: input.value.trim()
+                    });
+                }
+            });
+            
+            return variables;
+        }
+
+        // Handle syntax help button click
+        document.getElementById('syntax-help-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            const popup = document.getElementById('syntax-help-popup');
+            
+            if (popup.style.display === 'none' || popup.style.display === '') {
+                popup.style.display = 'block';
+            } else {
+                popup.style.display = 'none';
+            }
+        });
+
+        // Close help popup when clicking outside
+        document.addEventListener('click', function(e) {
+            const helpBtn = document.getElementById('syntax-help-btn');
+            const helpPopup = document.getElementById('syntax-help-popup');
+            
+            if (!helpBtn.contains(e.target) && !helpPopup.contains(e.target)) {
+                helpPopup.style.display = 'none';
+            }
+        });
+
+        // Handle regression link click
+        document.getElementById('regression-link').addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Save current state before navigating
+            saveSharedState();
+            
+            // Navigate to regression page
+            window.location.href = '/regression';
+        });
+
+
+        // Initialize on page load
+        window.addEventListener('load', function() {
+            // Load shared state first
+            loadSharedState();
+            
+            // Focus on first input
+            if (tenorInputs.length > 0) {
+                tenorInputs[0].focus();
+            }
+            
+            // Always check server status to verify curves are actually loaded
+            // Don't trust saved state for curve loading status
+            fetch('/curves_status')
+                .then(response => response.json())
+                .then(data => {
+                    curvesLoaded = data.loaded;
+                    updateLoadButtonState(curvesLoaded);
+                    // Update saved state with actual server status
+                    saveSharedState();
+                    
+                    // If curves are loaded and we have input expressions, automatically update chart
+                    if (curvesLoaded && hasValidInputExpressions()) {
+                        setTimeout(() => {
+                            updateChart();
+                        }, 500); // Small delay to ensure everything is initialized
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking curves status:', error);
+                    // Default to not loaded on error
+                    curvesLoaded = false;
+                    updateLoadButtonState(curvesLoaded);
+                    saveSharedState();
+                });
+        });
+    </script>
+</body>
+</html>
