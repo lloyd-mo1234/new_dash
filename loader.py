@@ -48,7 +48,7 @@ def get_most_recent_core_bundles(max_days: int = 200):
     """
     # Get path to core_curves directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    chart_app_dir = os.path.dirname(os.path.dirname(script_dir))
+    chart_app_dir = os.path.dirname(script_dir)
     core_curves_dir = os.path.join(chart_app_dir, 'core_curves')
     
     if not os.path.exists(core_curves_dir):
