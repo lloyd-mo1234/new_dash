@@ -6,7 +6,7 @@ import glob
 import re
 from datetime import datetime
 import pandas as pd
-import date_fn
+import printing_scripts.date_fn as date_fn
 
 
 def get_fx_rate(ccy, date):
@@ -26,7 +26,7 @@ def get_dates():
     today = datetime.now().strftime("%y%m%d")
     
     # Latest curve file date from aud_curve folder
-    pattern = os.path.join("aud_curves", "*_aud_curve.json")
+    pattern = os.path.join("..", "..", "aud_curves", "*_aud_curve.json")
     files = glob.glob(pattern)
     
     if files:
@@ -311,4 +311,4 @@ if __name__ == "__main__":
         aud_curve = aud_curve_serialiser(date)
         date = yyyy_mm_dd_to_yymmdd(date)
         name = date + "_aud_curve.json"
-        xc.Serialise("aud.primary", "C:\\BAppGeneral\\chart_app\\aud_curves\\" + name, True)
+        xc.Serialise("aud.primary", os.path.join("..", "..", "aud_curves", name), True)

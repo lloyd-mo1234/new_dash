@@ -7,15 +7,15 @@ import pandas as pd
 from datetime import datetime, timedelta
 import threading
 import logging
-from enhanced_simplified_loader import (
-    initialize_enhanced_curves,
+from loader import (
+    initialize_curves,
     initialize_historical_curves_only,
     add_realtime_bundle,
-    is_enhanced_curves_loaded,
-    clear_enhanced_curves,
-    get_enhanced_cache_stats
+    is_curves_loaded,
+    clear_curves,
+    get_cache_stats
 )
-from enhanced_simplified_swap_functions import get_enhanced_swap_data, get_enhanced_status
+from swap_functions import get_swap_data, get_status
 from regression_functions import prepare_regression_data, perform_regression_analysis, create_regression_charts, format_regression_statistics
 
 app = Flask(__name__)
@@ -25,7 +25,7 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
 # Clear any existing curves cache on startup to ensure clean state
-clear_enhanced_curves()
+clear_curves()
 
 # Don't start loading automatically - wait for web page visit
 print("🎬 Flask app ready - curve loading will start when web page is accessed")
@@ -172,13 +172,13 @@ def run_regression():
 @app.route('/curves_status')
 def curves_status():
     """Check if curves are loaded"""
-    loaded = is_enhanced_curves_loaded()
+    loaded = is_curves_loaded()
     return jsonify({'loaded': loaded})
 
 @app.route('/start_loading', methods=['POST'])
 def start_loading():
     """Start historical curve loading in background thread"""
-    loaded = is_enhanced_curves_loaded()
+    loaded = is_curves_loaded()
     
     if not loaded:
         # Start loading historical curves only
@@ -230,15 +230,15 @@ def realtime_loading_status_check():
 def clear_cache():
     """Clear all caches"""
     try:
-        clear_enhanced_curves()
-        return jsonify({'success': True, 'message': 'Enhanced curves cache cleared'})
+        clear_curves()
+        return jsonify({'success': True, 'message': 'Curves cache cleared'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
-    stats = get_enhanced_cache_stats()
+    stats = get_cache_stats()
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
@@ -251,7 +251,7 @@ def health_check():
 def realtime_status():
     """Get real-time functionality status"""
     try:
-        status = get_enhanced_status()
+        status = get_status()
         return jsonify(status)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -287,7 +287,7 @@ def get_realtime_rates():
             
             try:
                 # Get the latest rate for this simple expression
-                df, error = get_enhanced_swap_data(expression)
+                df, error = get_swap_data(expression)
                 if error or df is None or df.empty:
                     rates[label] = '--'
                     base_rates[label] = None
@@ -386,7 +386,7 @@ def update_chart():
                     re.match(r'^[a-z0-9]+\.\d+[ymd]\d+[ymd]$', expression.lower()) or 
                     re.match(r'^[a-z0-9]+\.\d{6}\.\d+[ymd]$', expression.lower())):
                     # Simple tenor syntax
-                    df, error = get_enhanced_swap_data(expression)
+                    df, error = get_swap_data(expression)
                     if error or df is None or df.empty:
                         continue
                     
@@ -422,7 +422,7 @@ def update_chart():
                         
                         # Load data for each tenor
                         for tenor in tenors_needed:
-                            df, error = get_enhanced_swap_data(tenor)
+                            df, error = get_swap_data(tenor)
                             if error or df is None or df.empty:
                                 continue
                             tenor_data[tenor] = df

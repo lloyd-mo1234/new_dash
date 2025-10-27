@@ -7,7 +7,7 @@ import plotly.graph_objs as go
 import plotly.utils
 import json
 from datetime import datetime, timedelta
-from enhanced_simplified_swap_functions import get_enhanced_swap_data
+from swap_functions import get_swap_data
 from performance_optimizations import (
     memory_cache_with_lru, disk_cache, ChartDataOptimizer
 )
@@ -68,7 +68,7 @@ def prepare_regression_data(y_variable, x_variables, range_filter='MAX'):
         variable_names = ['Y'] + [f'X{i+1}' for i in range(len(x_variables))]
         
         # Get Y variable data
-        y_df, y_error = get_enhanced_swap_data(y_variable)
+        y_df, y_error = get_swap_data(y_variable)
         if y_error or y_df is None or y_df.empty:
             return {'error': f'Error loading Y variable ({y_variable}): {y_error}'}
         all_dataframes.append(y_df)
@@ -77,7 +77,7 @@ def prepare_regression_data(y_variable, x_variables, range_filter='MAX'):
         x_dataframes = []
         for i, x_var in enumerate(x_variables):
             if x_var.strip():  # Only process non-empty variables
-                x_df, x_error = get_enhanced_swap_data(x_var)
+                x_df, x_error = get_swap_data(x_var)
                 if x_error or x_df is None or x_df.empty:
                     return {'error': f'Error loading X{i+1} variable ({x_var}): {x_error}'}
                 all_dataframes.append(x_df)
@@ -731,7 +731,7 @@ def create_variables_timeseries(regression_results, dark_theme):
         variable_labels = ['Y'] + [f'X{i+1}' for i in range(len(x_variables))]
         
         for i, (var_syntax, label) in enumerate(zip(all_variables, variable_labels)):
-            df, error = get_enhanced_swap_data(var_syntax)
+            df, error = get_swap_data(var_syntax)
             if not error and df is not None and not df.empty:
                 # Filter to same date range as regression
                 filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]

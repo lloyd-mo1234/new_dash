@@ -6,7 +6,7 @@ import glob
 import re
 from datetime import datetime, timedelta
 import pandas as pd
-import date_fn
+import printing_scripts.date_fn as date_fn
 
 # Import all curve serializers
 from aud_print import aud_curve_serialiser
@@ -88,7 +88,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': usd_curve_serialiser,
             'curve_name': 'usd.sofr.primary',
             'calendar': 'nyc',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\usd_curves\\'
+            'folder_path': os.path.join('..', '..', 'usd_curves')
         },
         'aud': {
             'pair': 'audusd',
@@ -96,7 +96,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': aud_curve_serialiser,
             'curve_name': 'aud.primary',
             'calendar': 'syb',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\aud_curves\\',
+            'folder_path': os.path.join('..', '..', 'aud_curves'),
             'invert_fx': False
         },
         'eur': {
@@ -105,7 +105,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': eur_curve_serialiser,
             'curve_name': 'eur.primary',
             'calendar': 'tgt',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\eur_curves\\',
+            'folder_path': os.path.join('..', '..', 'eur_curves'),
             'invert_fx': False
         },
         'gbp': {
@@ -114,7 +114,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': gbp_curve_serialiser,
             'curve_name': 'gbp.sonia.primary',
             'calendar': 'lnb',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\gbp_curves\\',
+            'folder_path': os.path.join('..', '..', 'gbp_curves'),
             'invert_fx': False
         },
         'cad': {
@@ -123,7 +123,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': cad_curve_serialiser,
             'curve_name': 'cad.curve.primary',
             'calendar': 'trb',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\cad_curves\\',
+            'folder_path': os.path.join('..', '..', 'cad_curves'),
             'invert_fx': True
         },
         'jpy': {
@@ -132,7 +132,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': jpy_curve_serialiser,
             'curve_name': 'jpy.tonar.primary',
             'calendar': 'tkb',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\jpy_curves\\',
+            'folder_path': os.path.join('..', '..', 'jpy_curves'),
             'invert_fx': True
         },
         'nzd': {
@@ -141,7 +141,7 @@ def process_currency(currency, start_date, end_date):
             'serializer': nzd_curve_serialiser,
             'curve_name': 'nzd.bkbm.primary',
             'calendar': 'aub,web',
-            'folder_path': 'C:\\BAppGeneral\\chart_app\\nzd_curves\\',
+            'folder_path': os.path.join('..', '..', 'nzd_curves'),
             'invert_fx': False
         }
     }
@@ -247,7 +247,7 @@ def process_currency(currency, start_date, end_date):
                 
                 # Check if USD curve exists for this date
                 usd_filename = f"{formatted_date}_usd_curve.json"
-                usd_filepath = f"C:\\BAppGeneral\\chart_app\\usd_curves\\{usd_filename}"
+                usd_filepath = os.path.join("..", "..", "usd_curves", usd_filename)
                 
                 if not os.path.exists(usd_filepath):
                     raise ValueError(f"USD curve not found for {date}: {usd_filepath}")

@@ -6,7 +6,7 @@ import glob
 import re
 from datetime import datetime
 import pandas as pd
-import date_fn
+import printing_scripts.date_fn as date_fn
 
 def gbp_curve_serialiser(date):
     settle_date = xc.DateAdd(date, "0b", "lnb")  # Note: settle date is same day for GBP

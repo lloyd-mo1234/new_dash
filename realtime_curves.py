@@ -15,7 +15,7 @@ printing_scripts_path = os.path.join(chart_app_dir, 'printing_scripts')
 if printing_scripts_path not in sys.path:
     sys.path.append(printing_scripts_path)
 
-import date_fn
+import printing_scripts.date_fn as date_fn
 
 
 def get_all_securities_for_currencies(currencies):

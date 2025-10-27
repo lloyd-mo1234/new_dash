@@ -6,7 +6,7 @@ import glob
 import re
 from datetime import datetime, timedelta
 import pandas as pd
-import date_fn
+import printing_scripts.date_fn as date_fn
 import traceback
 
 # Import all curve serializers
@@ -32,7 +32,7 @@ def yyyy_mm_dd_to_yymmdd(date_string):
 def create_curve_folders():
     """Create folders for all currency curves"""
     currencies = ['usd', 'aud', 'eur', 'gbp', 'cad', 'jpy', 'nzd']
-    base_path = "C:\\BAppGeneral\\chart_app\\"
+    base_path = os.path.join("..", "..")  # Parent directory (chart_app)
     
     for currency in currencies:
         folder_path = os.path.join(base_path, f"{currency}_curves")
@@ -98,7 +98,7 @@ def process_currency(ccy, config, dates, latest_date, current_date):
                 
                 formatted_date = yyyy_mm_dd_to_yymmdd(date)
               
-                usd_curve = xc.Deserialise("C:\\BAppGeneral\\chart_app\\usd_curves\\" + formatted_date + "_usd_curve.json", "usd.sofr.primary",True)
+                usd_curve = xc.Deserialise(os.path.join("..", "..", "usd_curves", formatted_date + "_usd_curve.json"), "usd.sofr.primary", True)
 
                 # Build currency bundle (this will reference USD curve)
                 currency_bundle = xc.BuildBlockBundle(
@@ -121,7 +121,7 @@ def process_currency(ccy, config, dates, latest_date, current_date):
             # Format date and create filename
             formatted_date = yyyy_mm_dd_to_yymmdd(date)
             filename = f"{formatted_date}_{ccy}_curve.json"
-            filepath = f"C:\\BAppGeneral\\chart_app\\{ccy}_curves\\{filename}"
+            filepath = os.path.join("..", "..", f"{ccy}_curves", filename)
             
             # Serialize curve
             xc.Serialise(config['curve_name'], filepath, True)

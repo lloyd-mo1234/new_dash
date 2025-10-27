@@ -2,10 +2,10 @@ import pandas as pd
 import re
 from datetime import datetime
 from cba.analytics import xcurves as xc
-from enhanced_simplified_loader import (
-    get_enhanced_bundle_name,
-    get_enhanced_available_dates,
-    is_enhanced_curves_loaded,
+from loader import (
+    get_bundle_name,
+    get_available_dates,
+    is_curves_loaded,
     yymmdd_to_datetime
 )
 
@@ -108,9 +108,9 @@ def yymmdd_to_excel_date(date_str: str) -> int:
     excel_epoch = datetime(1900, 1, 1)
     return (date_obj - excel_epoch).days + 2
 
-def enhanced_swap_rate(start: str, end: str, currency: str = 'aud'):
+def swap_rate(start: str, end: str, currency: str = 'aud'):
     """
-    Calculate swap rates using enhanced bundle approach (both historical and real-time)
+    Calculate swap rates using bundle approach (both historical and real-time)
     
     Args:
         start: Start tenor (e.g., '1y')
@@ -123,20 +123,20 @@ def enhanced_swap_rate(start: str, end: str, currency: str = 'aud'):
     if currency not in CURRENCY_CONFIG:
         raise ValueError(f"Unsupported currency: {currency}")
     
-    if not is_enhanced_curves_loaded():
-        raise ValueError("Enhanced curves not loaded. Call initialize_enhanced_curves() first.")
+    if not is_curves_loaded():
+        raise ValueError("Curves not loaded. Call initialize_curves() first.")
     
     # Get configuration
     config = CURRENCY_CONFIG[currency]
     swap_rates = {}
     
     # Get all available dates
-    available_dates = get_enhanced_available_dates()
+    available_dates = get_available_dates()
     
     for date_str in available_dates:
         try:
             # Get bundle name for this date
-            bundle_name = get_enhanced_bundle_name(date_str)
+            bundle_name = get_bundle_name(date_str)
             if not bundle_name:
                 continue
             
@@ -167,9 +167,9 @@ def enhanced_swap_rate(start: str, end: str, currency: str = 'aud'):
     
     return swap_rates
 
-def enhanced_swap_rate_fixed_date(fixed_start_date: datetime, tenor: str, currency: str = 'aud'):
+def swap_rate_fixed_date(fixed_start_date: datetime, tenor: str, currency: str = 'aud'):
     """
-    Calculate swap rates with a fixed start date using enhanced bundles
+    Calculate swap rates with a fixed start date using bundles
     Only includes dates that are <= fixed_start_date
     
     Args:
@@ -183,15 +183,15 @@ def enhanced_swap_rate_fixed_date(fixed_start_date: datetime, tenor: str, curren
     if currency not in CURRENCY_CONFIG:
         raise ValueError(f"Unsupported currency: {currency}")
     
-    if not is_enhanced_curves_loaded():
-        raise ValueError("Enhanced curves not loaded. Call initialize_enhanced_curves() first.")
+    if not is_curves_loaded():
+        raise ValueError("Curves not loaded. Call initialize_curves() first.")
     
     # Get configuration
     config = CURRENCY_CONFIG[currency]
     swap_rates = {}
     
     # Get all available dates
-    available_dates = get_enhanced_available_dates()
+    available_dates = get_available_dates()
     
     # Convert fixed start date to Excel date for xcurves
     excel_epoch = datetime(1900, 1, 1)
@@ -210,7 +210,7 @@ def enhanced_swap_rate_fixed_date(fixed_start_date: datetime, tenor: str, curren
                 continue
             
             # Get bundle name for this date
-            bundle_name = get_enhanced_bundle_name(date_str)
+            bundle_name = get_bundle_name(date_str)
             if not bundle_name:
                 continue
             
@@ -235,9 +235,9 @@ def enhanced_swap_rate_fixed_date(fixed_start_date: datetime, tenor: str, curren
     
     return swap_rates
 
-def get_enhanced_swap_data(tenor_syntax: str):
+def get_swap_data(tenor_syntax: str):
     """
-    Parse tenor syntax and return swap rate data using enhanced bundles (historical + real-time)
+    Parse tenor syntax and return swap rate data using bundles (historical + real-time)
     Supports multiple formats:
     1. Standard: 'aud.1y1y' (AUD IRS using AUDIRS-SS template)
     2. Template-specific: 'audxc.1y1y' (AUD cross-currency using AONIA-SOFR template)
@@ -270,8 +270,8 @@ def get_enhanced_swap_data(tenor_syntax: str):
             else:
                 raise ValueError(f"Invalid tenor format: {tenor}. Use format like 10y, 1y1y, 5y5y, etc.")
             
-            # Calculate swap rates using enhanced bundles
-            rates = enhanced_swap_rate(start, end, currency)
+            # Calculate swap rates using bundles
+            rates = swap_rate(start, end, currency)
             
             if not rates:
                 return None, "No swap rates calculated"
@@ -303,8 +303,8 @@ def get_enhanced_swap_data(tenor_syntax: str):
                 except ValueError:
                     raise ValueError(f"Invalid date format: {fixed_date_str}. Use DDMMYY format (e.g., 130526 for 13 May 2026)")
                 
-                # Calculate fixed-date swap rates using enhanced bundles
-                rates = enhanced_swap_rate_fixed_date(fixed_start_date, tenor, currency)
+                # Calculate fixed-date swap rates using bundles
+                rates = swap_rate_fixed_date(fixed_start_date, tenor, currency)
                 if not rates:
                     return None, "No swap rates calculated"
                 
@@ -331,11 +331,11 @@ def get_enhanced_swap_data(tenor_syntax: str):
                     tenor2_formatted = tenor2
                 
                 # Get data for both tenors
-                df1, error1 = get_enhanced_swap_data(f"{currency}.{tenor1_formatted}")
+                df1, error1 = get_swap_data(f"{currency}.{tenor1_formatted}")
                 if error1:
                     return None, error1
                 
-                df2, error2 = get_enhanced_swap_data(f"{currency}.{tenor2_formatted}")
+                df2, error2 = get_swap_data(f"{currency}.{tenor2_formatted}")
                 if error2:
                     return None, error2
                 
@@ -354,15 +354,15 @@ def get_enhanced_swap_data(tenor_syntax: str):
                 raise ValueError(f"Unsupported currency: {currency}. Supported: {list(CURRENCY_CONFIG.keys())}")
             
             # Get data for all three tenors
-            df1, error1 = get_enhanced_swap_data(f"{currency}.{tenor1}")
+            df1, error1 = get_swap_data(f"{currency}.{tenor1}")
             if error1:
                 return None, error1
             
-            df2, error2 = get_enhanced_swap_data(f"{currency}.{tenor2}")
+            df2, error2 = get_swap_data(f"{currency}.{tenor2}")
             if error2:
                 return None, error2
                 
-            df3, error3 = get_enhanced_swap_data(f"{currency}.{tenor3}")
+            df3, error3 = get_swap_data(f"{currency}.{tenor3}")
             if error3:
                 return None, error3
             
@@ -382,11 +382,11 @@ def get_enhanced_swap_data(tenor_syntax: str):
     except Exception as e:
         return None, str(e)
 
-def get_enhanced_status():
-    """Get status of enhanced curves system"""
-    from enhanced_simplified_loader import get_enhanced_cache_stats, REALTIME_AVAILABLE
+def get_status():
+    """Get status of curves system"""
+    from loader import get_cache_stats, REALTIME_AVAILABLE
     
-    stats = get_enhanced_cache_stats()
+    stats = get_cache_stats()
     
     return {
         'loaded': stats['loaded'],

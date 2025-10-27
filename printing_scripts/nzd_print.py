@@ -6,7 +6,7 @@ import glob
 import re
 from datetime import datetime
 import pandas as pd
-import date_fn
+import printing_scripts.date_fn as date_fn
 
 
 def nzd_curve_serialiser(date):

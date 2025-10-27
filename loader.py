@@ -15,19 +15,19 @@ except ImportError as e:
     REALTIME_AVAILABLE = False
     print(f"⚠️ Real-time curves module not available: {e}")
 
-# Global enhanced curves cache - stores both historical and real-time bundle names
-enhanced_curves_cache = {}
-enhanced_curves_loaded = {}
-enhanced_curves_lock = threading.Lock()
+# Global curves cache - stores both historical and real-time bundle names
+curves_cache = {}
+curves_loaded = {}
+curves_lock = threading.Lock()
 
 # Global progress tracking
-enhanced_progress_data = {
+progress_data = {
     'current': 0,
     'total': 0,
     'status': 'idle',
     'message': ''
 }
-enhanced_progress_lock = threading.Lock()
+progress_lock = threading.Lock()
 
 def yymmdd_to_datetime(date_str: str) -> datetime:
     """Convert YYMMDD to datetime object"""
@@ -104,8 +104,8 @@ def load_historical_bundles(max_days: int = 200, num_threads: int = 12):
         return {}
     
     # Initialize progress
-    with enhanced_progress_lock:
-        enhanced_progress_data.update({
+    with progress_lock:
+        progress_data.update({
             'current': 0,
             'total': len(recent_bundles),
             'status': 'loading',
@@ -140,8 +140,8 @@ def load_historical_bundles(max_days: int = 200, num_threads: int = 12):
                 current_count = success_count
             
             # Update progress (thread-safe)
-            with enhanced_progress_lock:
-                enhanced_progress_data.update({
+            with progress_lock:
+                progress_data.update({
                     'current': current_count,
                     'message': f'Loading historical bundles: {current_count}/{len(recent_bundles)}'
                 })
@@ -188,8 +188,8 @@ def add_realtime_bundle(currencies: list = None):
     today_yymmdd = datetime.now().strftime("%y%m%d")
     
     # Update progress to show real-time building
-    with enhanced_progress_lock:
-        enhanced_progress_data.update({
+    with progress_lock:
+        progress_data.update({
             'status': 'loading',
             'message': f'Building real-time bundle...'
         })
@@ -199,8 +199,8 @@ def add_realtime_bundle(currencies: list = None):
         realtime_result = realtime_curves.build_selected_curves_realtime(today, currencies)
         
         if 'error' in realtime_result:
-            with enhanced_progress_lock:
-                enhanced_progress_data.update({
+            with progress_lock:
+                progress_data.update({
                     'status': 'error',
                     'message': f'Real-time bundle failed'
                 })
@@ -209,13 +209,13 @@ def add_realtime_bundle(currencies: list = None):
         # The real-time system automatically creates a bundle named {today_yymmdd}_core_bundle
         bundle_name = f"{today_yymmdd}_core_bundle"
         
-        # Add to our enhanced cache
-        with enhanced_curves_lock:
-            enhanced_curves_cache[today_yymmdd] = bundle_name
+        # Add to our cache
+        with curves_lock:
+            curves_cache[today_yymmdd] = bundle_name
         
         # Update progress to show real-time bundle completed
-        with enhanced_progress_lock:
-            enhanced_progress_data.update({
+        with progress_lock:
+            progress_data.update({
                 'status': 'complete',
                 'message': f'Real-time bundle loaded'
             })
@@ -232,16 +232,16 @@ def add_realtime_bundle(currencies: list = None):
         }
         
     except Exception as e:
-        with enhanced_progress_lock:
-            enhanced_progress_data.update({
+        with progress_lock:
+            progress_data.update({
                 'status': 'error',
                 'message': f'Failed to build real-time bundle'
             })
         return {'error': f'Failed to build real-time bundle: {str(e)}'}
 
-def initialize_enhanced_curves(max_days: int = 200, include_realtime: bool = True, realtime_currencies: list = None):
+def initialize_curves(max_days: int = 200, include_realtime: bool = True, realtime_currencies: list = None):
     """
-    Enhanced curve initialization that loads both historical and real-time bundles
+    Curve initialization that loads both historical and real-time bundles
     
     Args:
         max_days: Maximum number of historical days to load
@@ -251,7 +251,7 @@ def initialize_enhanced_curves(max_days: int = 200, include_realtime: bool = Tru
     Returns:
         dict: Dictionary of loaded bundle names with status
     """
-    global enhanced_curves_cache, enhanced_curves_loaded
+    global curves_cache, curves_loaded
     
     results = {
         'historical': {},
@@ -260,18 +260,18 @@ def initialize_enhanced_curves(max_days: int = 200, include_realtime: bool = Tru
         'errors': []
     }
     
-    with enhanced_curves_lock:
+    with curves_lock:
         # Step 1: Load historical bundles
         historical_bundles = load_historical_bundles(max_days, num_threads=12)
-        enhanced_curves_cache.update(historical_bundles)
+        curves_cache.update(historical_bundles)
         results['historical'] = historical_bundles
         
         # Mark as loaded and complete after historical bundles are done
-        enhanced_curves_loaded['bundles'] = True
+        curves_loaded['bundles'] = True
         
         # Mark as complete immediately after historical loading
-        with enhanced_progress_lock:
-            enhanced_progress_data.update({
+        with progress_lock:
+            progress_data.update({
                 'status': 'complete',
                 'message': f'Historical curves loaded'
             })
@@ -297,7 +297,7 @@ def initialize_historical_curves_only(max_days: int = 200):
     Returns:
         dict: Dictionary of loaded bundle names with status
     """
-    global enhanced_curves_cache, enhanced_curves_loaded
+    global curves_cache, curves_loaded
     
     results = {
         'historical': {},
@@ -305,25 +305,25 @@ def initialize_historical_curves_only(max_days: int = 200):
         'errors': []
     }
     
-    with enhanced_curves_lock:
+    with curves_lock:
         # Load historical bundles only
         historical_bundles = load_historical_bundles(max_days, num_threads=12)
-        enhanced_curves_cache.update(historical_bundles)
+        curves_cache.update(historical_bundles)
         results['historical'] = historical_bundles
         
         # Mark as loaded and complete after historical bundles are done
-        enhanced_curves_loaded['bundles'] = True
+        curves_loaded['bundles'] = True
         
         # Mark as complete immediately after historical loading
-        with enhanced_progress_lock:
-            enhanced_progress_data.update({
+        with progress_lock:
+            progress_data.update({
                 'status': 'complete',
                 'message': f'Historical curves loaded'
             })
     
     return results
 
-def get_enhanced_bundle_name(date_str: str):
+def get_bundle_name(date_str: str):
     """
     Get the bundle name for a specific date (works for both historical and real-time)
     
@@ -333,31 +333,31 @@ def get_enhanced_bundle_name(date_str: str):
     Returns:
         str: Bundle name or None if not found
     """
-    with enhanced_curves_lock:
-        return enhanced_curves_cache.get(date_str)
+    with curves_lock:
+        return curves_cache.get(date_str)
 
-def get_enhanced_available_dates():
-    """Get list of available dates in the enhanced cache (both historical and real-time)"""
-    with enhanced_curves_lock:
-        return sorted(enhanced_curves_cache.keys())
+def get_available_dates():
+    """Get list of available dates in the cache (both historical and real-time)"""
+    with curves_lock:
+        return sorted(curves_cache.keys())
 
-def is_enhanced_curves_loaded():
-    """Check if enhanced curves are loaded"""
-    with enhanced_curves_lock:
-        return enhanced_curves_loaded.get('bundles', False)
+def is_curves_loaded():
+    """Check if curves are loaded"""
+    with curves_lock:
+        return curves_loaded.get('bundles', False)
 
-def clear_enhanced_curves():
-    """Clear enhanced curves cache"""
-    global enhanced_curves_cache, enhanced_curves_loaded
-    with enhanced_curves_lock:
-        enhanced_curves_cache.clear()
-        enhanced_curves_loaded.clear()
-    print("🧹 Enhanced curves cache cleared")
+def clear_curves():
+    """Clear curves cache"""
+    global curves_cache, curves_loaded
+    with curves_lock:
+        curves_cache.clear()
+        curves_loaded.clear()
+    print("🧹 Curves cache cleared")
 
-def get_enhanced_cache_stats():
-    """Get statistics about the enhanced cache"""
-    with enhanced_curves_lock:
-        if not enhanced_curves_cache:
+def get_cache_stats():
+    """Get statistics about the cache"""
+    with curves_lock:
+        if not curves_cache:
             return {
                 'loaded': False,
                 'bundle_count': 0,
@@ -365,17 +365,17 @@ def get_enhanced_cache_stats():
                 'has_today': False
             }
         
-        dates = sorted(enhanced_curves_cache.keys())
+        dates = sorted(curves_cache.keys())
         oldest_date = yymmdd_to_datetime(dates[-1]) if dates else None
         newest_date = yymmdd_to_datetime(dates[0]) if dates else None
         
         # Check if today's data is included
         today_yymmdd = datetime.now().strftime("%y%m%d")
-        has_today = today_yymmdd in enhanced_curves_cache
+        has_today = today_yymmdd in curves_cache
         
         return {
             'loaded': True,
-            'bundle_count': len(enhanced_curves_cache),
+            'bundle_count': len(curves_cache),
             'date_range': {
                 'oldest': oldest_date.strftime('%Y-%m-%d') if oldest_date else None,
                 'newest': newest_date.strftime('%Y-%m-%d') if newest_date else None
@@ -408,16 +408,16 @@ def update_realtime_bundle(currencies: list = None):
     
     return result
 
-def get_enhanced_progress():
-    """Get current progress of enhanced loading"""
-    with enhanced_progress_lock:
-        return enhanced_progress_data.copy()
+def get_progress():
+    """Get current progress of loading"""
+    with progress_lock:
+        return progress_data.copy()
 
-def reset_enhanced_progress():
-    """Reset enhanced progress tracking"""
-    global enhanced_progress_data
-    with enhanced_progress_lock:
-        enhanced_progress_data = {
+def reset_progress():
+    """Reset progress tracking"""
+    global progress_data
+    with progress_lock:
+        progress_data = {
             'current': 0,
             'total': 0,
             'status': 'idle',
