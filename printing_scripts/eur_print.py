@@ -6,7 +6,10 @@ import glob
 import re
 from datetime import datetime
 import pandas as pd
-import printing_scripts.date_fn as date_fn
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+import date_fn
 
 def eur_curve_serialiser(date):
     settle_date = xc.DateAdd(date, "2b", "tgt")

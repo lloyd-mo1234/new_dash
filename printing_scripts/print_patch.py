@@ -6,7 +6,10 @@ import glob
 import re
 from datetime import datetime, timedelta
 import pandas as pd
-import printing_scripts.date_fn as date_fn
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+import date_fn
 
 # Import all curve serializers
 from aud_print import aud_curve_serialiser
