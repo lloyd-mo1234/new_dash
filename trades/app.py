@@ -129,18 +129,19 @@ def calculate_total_trade_pnl(trade):
         total_pnl = 0.0
         position_count = 0
         
-        # Calculate P&L for all positions
-        for i, (price, size) in enumerate(zip(trade.prices, trade.sizes)):
+        # Calculate P&L for all entry positions
+        for i, (price, size) in enumerate(zip(trade.entry_prices, trade.entry_sizes)):
             if not trade.instrument_details:
                 continue
                 
             instrument = trade.instrument_details[0]  # Use first instrument
-            handle = f"{trade.trade_id}_position_{i}_pnl_calc"
+            handle = f"{trade.trade_id}_entry_{i}_pnl_calc"
             
-            print(f"🔧 Calculating position {i}: price={price}, size={size}, instrument={instrument}")
+            print(f"🔧 Calculating entry position {i}: price={price}, size={size}, instrument={instrument}")
             
             position = XCSwapPosition(
                 handle=handle,
+                position_type='entry',
                 price=price,  # Already in percentage terms
                 size=size,
                 instrument=instrument
@@ -151,9 +152,36 @@ def calculate_total_trade_pnl(trade):
                 position_pnl = pnl_result['pnl']
                 total_pnl += position_pnl
                 position_count += 1
-                print(f"   Position {i} P&L: ${position_pnl:,.2f}")
+                print(f"   Entry position {i} P&L: ${position_pnl:,.2f}")
             else:
-                print(f"   Failed to create XC swaps for position {i}")
+                print(f"   Failed to create XC swaps for entry position {i}")
+        
+        # Calculate P&L for all exit positions
+        for i, (price, size) in enumerate(zip(trade.exit_prices, trade.exit_sizes)):
+            if not trade.instrument_details:
+                continue
+                
+            instrument = trade.instrument_details[0]  # Use first instrument
+            handle = f"{trade.trade_id}_exit_{i}_pnl_calc"
+            
+            print(f"🔧 Calculating exit position {i}: price={price}, size={size}, instrument={instrument}")
+            
+            position = XCSwapPosition(
+                handle=handle,
+                position_type='exit',
+                price=price,  # Already in percentage terms
+                size=size,
+                instrument=instrument
+            )
+            
+            if position.create_xc_swaps():
+                pnl_result = position.calculate_pnl()
+                position_pnl = pnl_result['pnl']
+                total_pnl += position_pnl
+                position_count += 1
+                print(f"   Exit position {i} P&L: ${position_pnl:,.2f}")
+            else:
+                print(f"   Failed to create XC swaps for exit position {i}")
         
         print(f"✅ Total trade P&L for {trade.trade_id}: ${total_pnl:,.2f} ({position_count} positions)")
         return total_pnl
@@ -877,14 +905,23 @@ def add_trade():
         trade.instrument_details = instruments
         print(f"🔍 Trade created with typology: {trade.typology}, instruments: {trade.instrument_details}")
         
-        # Add positions from arrays
-        prices = data.get('prices', [])
-        sizes = data.get('sizes', [])
+        # Add entry positions from arrays
+        entry_prices = data.get('entry_prices', [])
+        entry_sizes = data.get('entry_sizes', [])
         
-        for price, size in zip(prices, sizes):
+        for price, size in zip(entry_prices, entry_sizes):
             if price and size:
-                trade.prices.append(float(price))
-                trade.sizes.append(float(size))
+                trade.entry_prices.append(float(price))
+                trade.entry_sizes.append(float(size))
+        
+        # Add exit positions from arrays
+        exit_prices = data.get('exit_prices', [])
+        exit_sizes = data.get('exit_sizes', [])
+        
+        for price, size in zip(exit_prices, exit_sizes):
+            if price and size:
+                trade.exit_prices.append(float(price))
+                trade.exit_sizes.append(float(size))
         
         # Calculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -924,11 +961,15 @@ def get_trades():
                 'typology': trade.typology,
                 'secondary_typology': trade.secondary_typology,
                 'instrument_details': trade.instrument_details,
-                'prices': trade.prices,
-                'sizes': trade.sizes,
-                'weighted_avg_price': trade.get_weighted_average_price(),
+                'entry_prices': trade.entry_prices,
+                'entry_sizes': trade.entry_sizes,
+                'exit_prices': trade.exit_prices,
+                'exit_sizes': trade.exit_sizes,
+                'weighted_avg_entry': trade.get_weighted_average_entry(),
+                'weighted_avg_exit': trade.get_weighted_average_exit(),
                 'stored_pnl': stored_pnl,
                 'pnl_timestamp': pnl_timestamp,
+                'xc_positions_count': len(trade.xc_positions) if trade.xc_positions else 0
             }
         
         # Include portfolio-level P&L metadata
@@ -965,7 +1006,7 @@ def get_trade_details(trade_id):
 
 @app.route('/update_trade', methods=['POST'])
 def update_trade():
-    """Update trade positions and basic info"""
+    """Update trade entry/exit positions and basic info"""
     try:
         data = request.get_json()
         print(f"🔍 Update trade received data: {data}")
@@ -989,9 +1030,13 @@ def update_trade():
             trade.instrument_details = instruments
             print(f"🔍 Updated instruments to: {trade.instrument_details}")
         
-        # Update positions
-        trade.prices = data.get('prices', [])
-        trade.sizes = data.get('sizes', [])
+        # Update entry positions
+        trade.entry_prices = data.get('entry_prices', [])
+        trade.entry_sizes = data.get('entry_sizes', [])
+        
+        # Update exit positions
+        trade.exit_prices = data.get('exit_prices', [])
+        trade.exit_sizes = data.get('exit_sizes', [])
         
         # Recalculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1099,12 +1144,23 @@ def run_trade_regression():
 
 @app.route('/get_instrument_price', methods=['POST'])
 def get_instrument_price():
-    """Get live price for a specific instrument - DEPRECATED: Use /get_realtime_rates instead"""
+    """Get live price for a specific instrument"""
     try:
+        data = request.get_json()
+        instrument_type = data.get('type')
+        instrument_details = data.get('instrument')
+        secondary_instrument = data.get('secondary_instrument')
+        
+        price_result = get_instrument_live_price(
+            instrument_type, 
+            instrument_details, 
+            secondary_instrument
+        )
+        
         return jsonify({
-            'success': False,
-            'error': 'This endpoint is deprecated. Use /get_realtime_rates instead.'
-        }), 410  # HTTP 410 Gone
+            'success': True,
+            'price_data': price_result
+        })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1157,15 +1213,15 @@ def calculate_portfolio_pnl_xc():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/initialize_positions', methods=['POST'])
-def initialize_positions():
-    """Manually initialize positions for all trades"""
+@app.route('/initialize_xc_positions', methods=['POST'])
+def initialize_xc_positions():
+    """Manually initialize XC positions for all trades"""
     try:
-        successful_trades, total_positions = portfolio.initialize_positions()
+        successful_trades, total_positions = portfolio.initialize_xc_positions()
         
         return jsonify({
             'success': True,
-            'message': f'Positions initialized: {successful_trades}/{len(portfolio.trades)} trades, {total_positions} total positions',
+            'message': f'XC positions initialized: {successful_trades}/{len(portfolio.trades)} trades, {total_positions} total positions',
             'successful_trades': successful_trades,
             'total_trades': len(portfolio.trades),
             'total_positions': total_positions
@@ -1176,12 +1232,25 @@ def initialize_positions():
 
 @app.route('/update_realtime_pnl', methods=['POST'])
 def update_realtime_pnl():
-    """Update P&L for all trades using the portfolio's update_realtime_pnl method"""
+    """Update P&L for all trades using the same method as the popup, rebuild realtime curves, and store results"""
     try:
-        print("🔄 Starting real-time P&L update via portfolio method...")
+        print("🔄 Starting real-time P&L update with curve rebuild via API...")
         
-        # Call the portfolio's update_realtime_pnl method which handles everything
-        pnl_result = portfolio.update_realtime_pnl()
+        # First, rebuild the realtime curves (same as charts page button)
+        print("🔄 Step 1: Rebuilding realtime curves...")
+        try:
+            curve_result = add_realtime_bundle(['aud', 'eur', 'gbp', 'jpy', 'nzd', 'cad'])
+            print(f"✅ Realtime curves rebuilt successfully: {curve_result}")
+        except Exception as curve_error:
+            print(f"⚠️ Warning: Failed to rebuild realtime curves: {curve_error}")
+            # Continue with P&L update even if curve rebuild fails
+        
+        pnl_result = calculate_swap_portfolio_pnl(portfolio)
+
+        futures_instruments = get_futures_instrument_names(portfolio)
+        futures_details = get_futures_details(futures_instruments)
+
+        pnl_result_2 = calculate_futures_portfolio_pnl(portfolio, futures_details)
         
         if not pnl_result['success']:
             return jsonify(pnl_result), 500
@@ -1207,10 +1276,11 @@ def calculate_swap_pnl():
         # Extract position details with detailed logging
         trade_type = data.get('tradeType', 'swap')
         instrument = data.get('instrument')
+        position_type = data.get('positionType', 'entry')
         price_raw = data.get('price')
         size_raw = data.get('size')
         
-        print(f"� Extracted values: tradeType={trade_type}, instrument={instrument}, price={price_raw}, size={size_raw}")
+        print(f"� Extracted values: tradeType={trade_type}, instrument={instrument}, positionType={position_type}, price={price_raw}, size={size_raw}")
         
         # Convert to numbers with error handling
         try:
@@ -1249,6 +1319,7 @@ def calculate_swap_pnl():
         
         print(f"🔧 Position parameters:")
         print(f"   handle: {temp_handle}")
+        print(f"   position_type: {position_type}")
         print(f"   price (input): {price}%")
         print(f"   price (percentage): {price_percentage}%")
         print(f"   size: {size} million")
@@ -1256,6 +1327,7 @@ def calculate_swap_pnl():
         
         position = XCSwapPosition(
             handle=temp_handle,
+            position_type=position_type,
             price=price_percentage,  # This is the spread price in percentage terms
             size=size,
             instrument=instrument  # Complex expression like "aud.5y5y.10y10y"

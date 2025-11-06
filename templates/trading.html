@@ -1,0 +1,2514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        .trading-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 2px;
+            height: calc(100vh - 60px);
+            padding: 2px;
+            background: var(--bg-tool-area);
+        }
+        
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px;
+        }
+        
+        .trading-panel {
+            background: var(--bg-tool-area);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            overflow: auto;
+        }
+        
+        .trading-panel.portfolio-chart,
+        .trading-panel.instrument-chart {
+            border: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .trades-panel {
+            grid-column: 1;
+            grid-row: 1;
+        }
+        
+        .regression-table {
+            grid-column: 2;
+            grid-row: 1;
+        }
+        
+        .portfolio-chart {
+            grid-column: 1;
+            grid-row: 2;
+        }
+        
+        .instrument-chart {
+            grid-column: 2;
+            grid-row: 2;
+        }
+        
+        .trade-form {
+            display: flex;
+            gap: 1px;
+            margin-bottom: 20px;
+            align-items: end;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            color: #ffffff;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .form-group input, .form-group select {
+            padding: 5px 11px;
+            border: none;
+            border-radius: 4px;
+            background: #1e1e1e;
+            color: #00d4ff;
+            font-size: 12px;
+            height: 19px;
+            box-sizing: border-box;
+        }
+        
+        /* Standard input width (same as clear button) */
+        .form-group.standard input,
+        .form-group.standard select {
+            width: 67px;
+        }
+        
+        /* 2x width for identifier */
+        .form-group.double input {
+            width: 134px;
+        }
+        
+        /* 4x width for primary and secondary instruments */
+        .form-group.quad input {
+            width: 268px;
+        }
+        
+        .btn {
+            padding: 5px 11px;
+            background: transparent;
+            border: none;
+            border-radius: 0px;
+            cursor: pointer;
+            font-size: 9px;
+            transition: background-color 0.3s;
+            color: var(--text-primary);
+        }
+        
+        .btn:hover {
+            background: var(--accent-hover);
+            border-radius: 0px;
+        }
+        
+        .btn-primary {
+            background: transparent;
+            color: var(--text-primary);
+        }
+        
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            border-radius: 0px;
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--accent-hover);
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-remove {
+            background: transparent;
+            color: #ff6b6b;
+            border: none;
+            padding: 2px 6px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .btn-remove:hover {
+            background: rgba(255, 107, 107, 0.1);
+        }
+        
+        .trades-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .trade-item {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .trade-item h4 {
+            margin: 0 0 10px 0;
+            color: #00d4ff;
+        }
+        
+        .trade-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            font-size: 12px;
+        }
+        
+        .regression-inputs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .regression-table-container {
+            overflow-x: auto;
+        }
+        
+        .regression-table-data {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        
+        .regression-table-data th,
+        .regression-table-data td {
+            border: 1px solid #444;
+            padding: 8px;
+            text-align: center;
+        }
+        
+        .regression-table-data th {
+            background: #1e1e1e;
+            color: #00d4ff;
+        }
+        
+        .regression-table-data td {
+            background: #2d2d2d;
+        }
+        
+        .chart-container {
+            height: 100%;
+            min-height: 300px;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+        }
+        
+        .modal-content {
+            background-color: #1a1a1a;
+            margin: 5% auto;
+            padding: 20px;
+            border: none;
+            border-radius: 0px;
+            width: 80%;
+            max-width: 600px;
+            color: #ffffff;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #ffffff;
+        }
+        
+        .entry-exit-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .price-size-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        /* Spreadsheet-like grid styling */
+        .trades-grid-container {
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .trades-grid {
+            width: fit-content;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: transparent;
+            table-layout: auto;
+        }
+        
+        .trades-grid th {
+            background: transparent;
+            color: #ffffff;
+            padding: 4px 8px;
+            font-size: 12px;
+            text-align: left;
+            border-bottom: 1.5px solid #ffffff;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            height: 25px;
+        }
+        
+        .trades-grid td {
+            padding: 4px 8px;
+            background: #000000;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            color: #00d4ff;
+            font-size: 12px;
+        }
+        
+        .trades-grid tr:hover {
+            background: rgba(128, 128, 128, 0.2);
+        }
+        
+        .trades-grid input,
+        .trades-grid select {
+            height: 100%;
+            border: none;
+            background: transparent;
+            color: #00d4ff;
+            font-size: 13px;
+            padding: 4px;
+            box-sizing: border-box;
+        }
+        
+        .trades-grid select {
+            font-size: 13px;
+        }
+        
+        .trades-grid input:focus,
+        .trades-grid select:focus {
+            outline: 2px solid #007bff;
+            background: #2a2a2a;
+        }
+        
+        .grid-btn {
+            padding: 2px 6px;
+            font-size: 8px;
+            margin: 1px;
+        }
+        
+        /* Modal styling for trade entry */
+        .trade-basic-info {
+            margin-bottom: 20px;
+        }
+        
+        .basic-info-row {
+            display: flex;
+            gap: 2px;
+            align-items: end;
+        }
+        
+        .form-group-modal {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group-modal label {
+            color: #ffffff;
+            margin-bottom: 2px;
+            font-size: 12px;
+            font-weight: normal;
+        }
+        
+        .positions-section h4 {
+            color: #ffffff;
+            font-size: 1.17em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .basic-info-table {
+            width: 600px;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: transparent;
+            margin-bottom: 10px;
+        }
+        
+        .basic-info-table th {
+            background: #1a1a1a;
+            color: #ffffff;
+            padding: 4px 8px;
+            font-size: 12px;
+            text-align: left;
+            border-bottom: 1.5px solid #ffffff;
+        }
+        
+        .basic-info-table td {
+            padding: 0;
+            background: #000000;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .basic-info-table tr:hover {
+            background: rgba(128, 128, 128, 0.2);
+        }
+        
+        .basic-info-table .total-pnl-display {
+            background: #000000 !important;
+            width: 100%;
+            height: 100%;
+            padding: 4px 8px;
+            box-sizing: border-box;
+            display: block;
+            min-width: 70px;
+            text-align: center;
+        }
+        
+        .basic-info-table input,
+        .basic-info-table select {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #000000 !important;
+            color: #00d4ff !important;
+            font-size: 12px;
+            padding: 4px 8px;
+            box-sizing: border-box;
+            -webkit-appearance: none !important;
+            -moz-appearance: none !important;
+            appearance: none !important;
+        }
+        
+        .basic-info-table select option {
+            background: #000000 !important;
+            color: #00d4ff !important;
+        }
+        
+        .basic-info-table input:hover,
+        .basic-info-table select:hover {
+            background: rgba(128, 128, 128, 0.2) !important;
+        }
+        
+        .basic-info-table input:focus,
+        .basic-info-table select:focus {
+            background: #000000 !important;
+            outline: 1px solid #ffffff !important;
+            border-radius: 0px !important;
+            border: none !important;
+        }
+        
+        .form-group-modal input,
+        .form-group-modal select,
+        .modal-trade-type,
+        .modal-instrument {
+            padding: 4px;
+            border: none;
+            border-radius: 0px;
+            background-color: #000000 !important;
+            background: #000000 !important;
+            color: #00d4ff !important;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+        
+        .form-group-modal input:hover,
+        .form-group-modal select:hover,
+        .modal-trade-type:hover,
+        .modal-instrument:hover {
+            background-color: #00d4ff33 !important;
+            background: #00d4ff33 !important;
+        }
+        
+        .form-group-modal input:focus,
+        .form-group-modal select:focus,
+        .modal-trade-type:focus,
+        .modal-instrument:focus {
+            outline: none;
+            border-radius: 0px;
+            background-color: #000000 !important;
+            background: #000000 !important;
+        }
+        
+        /* Force black background on all select elements in modal */
+        select.modal-trade-type,
+        .modal-trade-type,
+        #instrumentLines select,
+        .basic-info-row select {
+            background-color: #000000 !important;
+            background: #000000 !important;
+            -webkit-appearance: none !important;
+            -moz-appearance: none !important;
+            appearance: none !important;
+            color: #00d4ff !important;
+        }
+        
+        /* Target option elements specifically */
+        select.modal-trade-type option,
+        .modal-trade-type option,
+        #instrumentLines select option,
+        .basic-info-row select option {
+            background-color: #000000 !important;
+            background: #000000 !important;
+            color: #00d4ff !important;
+        }
+        
+        /* Additional aggressive targeting */
+        .form-group-modal select,
+        .form-group-modal select:focus,
+        .form-group-modal select:hover,
+        .form-group-modal select:active {
+            background-color: #000000 !important;
+            background: #000000 !important;
+            color: #00d4ff !important;
+        }
+        
+        .positions-section {
+            margin-top: 20px;
+        }
+        
+        .positions-table-container {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        
+        .positions-table {
+            width: 300px;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: transparent;
+        }
+        
+        .positions-table th {
+            background: #1a1a1a;
+            color: #ffffff;
+            padding: 4px 8px;
+            font-size: 12px;
+            text-align: left;
+            border-bottom: 1.5px solid #ffffff;
+        }
+        
+        .positions-table td {
+            padding: 0;
+            background: #000000;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .positions-table tr:hover {
+            background: rgba(128, 128, 128, 0.2);
+        }
+        
+        .positions-table input,
+        .positions-table select {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #000000 !important;
+            color: #00d4ff !important;
+            font-size: 12px;
+            padding: 4px 8px;
+            box-sizing: border-box;
+            -webkit-appearance: none !important;
+            -moz-appearance: none !important;
+            appearance: none !important;
+        }
+        
+        .positions-table select option {
+            background: #000000 !important;
+            color: #00d4ff !important;
+        }
+        
+        .positions-table input[type="number"] {
+            width: 80px;
+            text-align: left;
+            background: transparent !important;
+        }
+        
+        .positions-table input:hover,
+        .positions-table select:hover {
+            background: rgba(128, 128, 128, 0.2) !important;
+        }
+        
+        .positions-table input:focus,
+        .positions-table select:focus,
+        .positions-table select:active {
+            background: #000000 !important;
+            outline: 1px solid #ffffff !important;
+            border-radius: 0px !important;
+            border: none !important;
+        }
+        
+        .positions-table input:focus {
+            background: transparent !important;
+            outline: 1px solid #ffffff !important;
+            border-radius: 0px !important;
+            border: none !important;
+        }
+        
+        .positions-table input::-webkit-outer-spin-button,
+        .positions-table input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        
+        .positions-table input[type=number] {
+            -moz-appearance: textfield;
+        }
+        
+        .position-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .trades-grid tbody tr {
+            cursor: pointer;
+        }
+        
+        .trades-grid tbody tr:hover {
+            background: #2a2a2a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <div class="navigation">
+            <a href="/" class="nav-link">Charts</a>
+            <a href="/regression" class="nav-link">Regression</a>
+            <a href="/trading" class="nav-link active">Trading</a>
+        </div>
+
+        <!-- Chart controls above trading grid (matching charts page format) -->
+        <div class="chart-controls" style="display: flex; justify-content: space-between; align-items: center;">
+            <button id="load-pnl-btn" class="load-realtime-button" style="background: #cc7a00;">
+                <span class="pnl-button-text">Load Real Time Data + P&L</span>
+                <span class="pnl-loading-spinner" style="display: none;">⟳</span>
+            </button>
+            
+            <!-- P&L Timestamp Display -->
+            <div id="pnlTimestamp" style="color: #00d4ff; font-size: 12px; display: none;">
+                P&L as of: <span id="timestampValue">--</span>
+            </div>
+        </div>
+
+        <div class="trading-container">
+        <!-- Trades Panel (Top) -->
+        <div class="trading-panel trades-panel" style="border: none;">
+            <div class="trades-grid-container">
+                <table class="trades-grid" id="tradesGrid">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">Type</th>
+                            <th style="width: 150px;">Identifier</th>
+                            <th style="width: 200px;">Expression</th>
+                            <th style="width: 80px;">Avg Entry</th>
+                            <th style="width: 80px;">Total 01</th>
+                            <th style="width: 80px;">P&L</th>
+                            <th style="width: 80px;">Col 7</th>
+                            <th style="width: 80px;">Col 8</th>
+                            <th style="width: 80px;">Col 9</th>
+                            <th style="width: 80px;">Col 10</th>
+                            <th style="width: 80px;">Col 11</th>
+                            <th style="width: 80px;">Col 12</th>
+                            <th style="width: 80px;">Col 13</th>
+                            <th style="width: 80px;">Col 14</th>
+                            <th style="width: 60px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesGridBody">
+                        <!-- Completed trades will be displayed here -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <button type="button" class="btn btn-primary" onclick="addNewRow()">+ Row</button>
+            </div>
+        </div>
+
+
+        <!-- Charts Row (Bottom) -->
+        <div class="charts-row">
+            <!-- Portfolio PnL Chart (Bottom Left) -->
+            <div class="trading-panel portfolio-chart">
+                <div class="chart-container" id="portfolioChart"></div>
+            </div>
+
+            <!-- Instrument Chart (Bottom Right) -->
+            <div class="trading-panel instrument-chart">
+                <div class="chart-container" id="instrumentChart"></div>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Trade Entry Modal -->
+    <div id="tradeModal" class="modal">
+        <div class="modal-content" style="max-width: 800px; width: 90%;">
+            <span class="close" onclick="closeTradeModal()">&times;</span>
+            <div style="display: flex; align-items: center; margin-bottom: 20px; position: relative;">
+                <input type="text" id="modalTitle" placeholder="Enter trade identifier..." style="background: transparent; border: none; color: #ffffff; font-size: 1.17em; font-weight: bold; width: 100%; margin: 0; padding: 5px; border-bottom: 1px solid #444;">
+                <div id="errorBanner" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #dc3545; color: white; padding: 5px 10px; font-size: 12px; border-radius: 0 0 4px 4px; z-index: 1000;"></div>
+            </div>
+            
+            <style>
+            #modalTitle::placeholder {
+                color: #888888;
+                opacity: 1;
+            }
+            
+            .error-highlight {
+                border: 2px solid #dc3545 !important;
+                background: rgba(220, 53, 69, 0.1) !important;
+            }
+            
+            .error-highlight:focus {
+                outline: 2px solid #dc3545 !important;
+            }
+            </style>
+            
+            <div id="modalContent">
+                <!-- Basic Trade Info -->
+                <div class="trade-basic-info">
+                    <table class="basic-info-table" id="basicInfoTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px;">Type</th>
+                                <th style="width: 350px;">Expression</th>
+                                <th style="width: 80px;">Live Rate</th>
+                                <th style="width: 90px;">Total P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody id="basicInfoTableBody">
+                            <tr>
+                                <td>
+                                    <select class="modal-trade-type" id="singleTradeType" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)">
+                                        <option value="">Select Type</option>
+                                        <option value="swap">Swap</option>
+                                        <option value="future">Future</option>
+                                        <option value="fx">FX</option>
+                                        <option value="efp">EFP</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="modal-instrument" id="singleInstrument" placeholder="e.g., aud.5y5y" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
+                                </td>
+                                <td>
+                                    <span class="live-rate-display" id="singleLiveRate" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
+                                </td>
+                                <td>
+                                    <span class="total-pnl-display" id="singleTotalPnL" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Positions Table -->
+                <div class="positions-section">
+                    <h4>Positions</h4>
+                    <div class="positions-table-container">
+                        <table class="positions-table" id="positionsTable">
+                            <thead>
+                                <tr>
+                                    <th>Price</th>
+                                    <th>01</th>
+                                    <th>P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positionsTableBody">
+                                <!-- Positions will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="position-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="addPosition()">+ Add Position</button>
+                    </div>
+                    
+                </div>
+                
+                <div style="margin-top: 20px; text-align: right;">
+                    <button type="button" class="btn btn-primary" onclick="saveTrade()">Save Trade</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeTradeModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let portfolio = {};
+        let currentTradeId = null;
+        
+        // Initialize empty charts
+        Plotly.newPlot('portfolioChart', [], {
+            plot_bgcolor: '#1e1e1e',
+            paper_bgcolor: '#1e1e1e',
+            font: { color: '#ffffff' },
+            xaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
+            yaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
+            margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
+        });
+        
+        Plotly.newPlot('instrumentChart', [], {
+            plot_bgcolor: '#1e1e1e',
+            paper_bgcolor: '#1e1e1e',
+            font: { color: '#ffffff' },
+            xaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
+            yaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
+            margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
+        });
+        
+        function addTrade() {
+            const form = document.getElementById('tradeForm');
+            const formData = new FormData(form);
+            
+            const tradeData = {
+                type: formData.get('tradeType'),
+                name: formData.get('tradeName') || `Trade ${Date.now()}`,
+                primary_instrument: formData.get('primaryInstrument'),
+                secondary_instrument: formData.get('secondaryInstrument'),
+                entry_price: parseFloat(formData.get('entryPrice')) || 0,
+                entry_size: parseFloat(formData.get('entrySize')) || 0
+            };
+            
+            if (!tradeData.type || !tradeData.primary_instrument) {
+                alert('Please fill in required fields');
+                return;
+            }
+            
+            fetch('/add_trade', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(tradeData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    clearForm();
+                    loadTrades();
+                    updateCharts();
+                } else {
+                    alert('Error adding trade: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error adding trade');
+            });
+        }
+        
+        function clearForm() {
+            document.getElementById('tradeForm').reset();
+        }
+        
+        function loadTrades() {
+            fetch('/get_trades')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayTrades(data.trades);
+                }
+            })
+            .catch(error => console.error('Error loading trades:', error));
+        }
+        
+        function displayTrades(trades) {
+            const tradesList = document.getElementById('tradesList');
+            tradesList.innerHTML = '';
+            
+            Object.values(trades).forEach(trade => {
+                const tradeDiv = document.createElement('div');
+                tradeDiv.className = 'trade-item';
+                
+                const pnl = trade.pnl || {};
+                const pnlColor = (pnl.total_pnl || 0) >= 0 ? '#51cf66' : '#ff6b6b';
+                
+                tradeDiv.innerHTML = `
+                    <h4>${trade.trade_id}</h4>
+                    <div class="trade-details">
+                        <div><strong>Type:</strong> ${trade.typology}</div>
+                        <div><strong>Instrument:</strong> ${trade.instrument_details}</div>
+                        <div style="color: ${pnlColor}"><strong>PnL:</strong> ${(pnl.total_pnl || 0).toFixed(2)}</div>
+                        <div><strong>Avg Entry:</strong> ${(trade.weighted_avg_entry || 0).toFixed(3)}</div>
+                        <div><strong>Live Price:</strong> ${(trade.live_price || 0).toFixed(3)}</div>
+                        <div><button class="btn btn-secondary" onclick="openTradeDetails('${trade.trade_id}')">Details</button></div>
+                    </div>
+                `;
+                
+                tradesList.appendChild(tradeDiv);
+            });
+        }
+        
+        function openTradeDetails(tradeId) {
+            currentTradeId = tradeId;
+            
+            fetch(`/get_trade_details/${tradeId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayTradeModal(data.trade);
+                } else {
+                    alert('Error loading trade details: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error loading trade details');
+            });
+        }
+        
+        function displayTradeModal(trade) {
+            document.getElementById('modalTitle').textContent = `Trade Details: ${trade.trade_id}`;
+            
+            // This function is no longer used in the simplified interface
+            // All trade editing is handled through openTradeModal and loadTradeForEditing
+            
+            document.getElementById('tradeModal').style.display = 'block';
+        }
+        
+        function closeTradeModal() {
+            document.getElementById('tradeModal').style.display = 'none';
+            currentTradeId = null;
+            hideErrorBanner();
+        }
+        
+        function showErrorBanner(message) {
+            const errorBanner = document.getElementById('errorBanner');
+            errorBanner.textContent = message;
+            errorBanner.style.display = 'block';
+        }
+        
+        function hideErrorBanner() {
+            const errorBanner = document.getElementById('errorBanner');
+            errorBanner.style.display = 'none';
+            
+            // Remove error highlighting from all fields
+            document.querySelectorAll('.error-highlight').forEach(element => {
+                element.classList.remove('error-highlight');
+            });
+        }
+        
+        function validateTradeForm() {
+            hideErrorBanner();
+            
+            const errors = [];
+            const errorFields = [];
+            
+            // Validate trade identifier
+            const tradeIdentifier = document.getElementById('modalTitle').value.trim();
+            if (!tradeIdentifier) {
+                errors.push('Trade identifier is required');
+                errorFields.push(document.getElementById('modalTitle'));
+            }
+            
+            // Validate basic info rows
+            const basicInfoRows = document.getElementById('basicInfoTableBody').querySelectorAll('tr');
+            let hasValidBasicInfo = false;
+            
+            basicInfoRows.forEach((row, index) => {
+                const tradeTypeSelect = row.querySelector('select.modal-trade-type');
+                const instrumentInput = row.querySelector('input.modal-instrument');
+                
+                const tradeType = tradeTypeSelect ? tradeTypeSelect.value.trim() : '';
+                const instrument = instrumentInput ? instrumentInput.value.trim() : '';
+                
+                // Check if row has any data
+                const hasAnyData = tradeType || instrument;
+                
+                if (hasAnyData) {
+                    // If row has any data, both fields must be filled
+                    if (!tradeType) {
+                        errors.push(`Row ${index + 1}: Type is required when instrument is specified`);
+                        if (tradeTypeSelect) errorFields.push(tradeTypeSelect);
+                    }
+                    if (!instrument) {
+                        errors.push(`Row ${index + 1}: Instrument is required when type is specified`);
+                        if (instrumentInput) errorFields.push(instrumentInput);
+                    }
+                    
+                    // If both fields are filled, mark as valid
+                    if (tradeType && instrument) {
+                        hasValidBasicInfo = true;
+                    }
+                }
+            });
+            
+            if (!hasValidBasicInfo) {
+                errors.push('At least one complete Type and Instrument pair is required');
+            }
+            
+            // Validate positions
+            const positionRows = document.getElementById('positionsTableBody').querySelectorAll('tr');
+            let hasValidPosition = false;
+            
+            positionRows.forEach((row, index) => {
+                const priceInput = row.querySelector('[data-position-price]');
+                const sizeInput = row.querySelector('[data-position-size]');
+                
+                const price = priceInput ? priceInput.value.trim() : '';
+                const size = sizeInput ? sizeInput.value.trim() : '';
+                
+                // Check if row has any data
+                const hasAnyData = price || size;
+                
+                if (hasAnyData) {
+                    // If row has any data, both fields must be filled
+                    if (!price) {
+                        errors.push(`Position ${index + 1}: Price is required`);
+                        if (priceInput) errorFields.push(priceInput);
+                    }
+                    if (!size) {
+                        errors.push(`Position ${index + 1}: Size is required`);
+                        if (sizeInput) errorFields.push(sizeInput);
+                    }
+                    
+                    // Validate numeric values
+                    if (price && isNaN(parseFloat(price))) {
+                        errors.push(`Position ${index + 1}: Price must be a valid number`);
+                        if (priceInput) errorFields.push(priceInput);
+                    }
+                    if (size && isNaN(parseFloat(size))) {
+                        errors.push(`Position ${index + 1}: Size must be a valid number`);
+                        if (sizeInput) errorFields.push(sizeInput);
+                    }
+                    
+                    // If both fields are valid, mark as valid position
+                    if (price && size && !isNaN(parseFloat(price)) && !isNaN(parseFloat(size))) {
+                        hasValidPosition = true;
+                    }
+                }
+            });
+            
+            if (!hasValidPosition) {
+                errors.push('At least one complete position (price and size) is required');
+            }
+            
+            // Show errors if any
+            if (errors.length > 0) {
+                // Highlight error fields
+                errorFields.forEach(field => {
+                    field.classList.add('error-highlight');
+                });
+                
+                // Show first error in banner
+                showErrorBanner(errors[0]);
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // These functions are no longer used in the simplified interface
+        // All position management is handled through addPosition() and removePosition()
+        
+        function saveTradeDetails() {
+            // This function is no longer used in the simplified interface
+            // All trade saving is handled through saveTrade()
+            console.log('⚠️ saveTradeDetails is deprecated, use saveTrade() instead');
+        }
+        
+        function deleteTrade() {
+            if (!currentTradeId) return;
+            
+            if (confirm('Are you sure you want to delete this trade?')) {
+                fetch(`/delete_trade/${currentTradeId}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        closeTradeModal();
+                        loadTrades();
+                        updateCharts();
+                    } else {
+                        alert('Error deleting trade: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error deleting trade');
+                });
+            }
+        }
+        
+        function updateRegressionTable() {
+            const instruments = [
+                document.getElementById('regInstrument1').value,
+                document.getElementById('regInstrument2').value,
+                document.getElementById('regInstrument3').value
+            ].filter(inst => inst.trim() !== '');
+            
+            if (instruments.length === 0) {
+                alert('Please enter at least one instrument');
+                return;
+            }
+            
+            // Get current portfolio instrument (for now, use first trade's instrument)
+            fetch('/get_trades')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && Object.keys(data.trades).length > 0) {
+                    const firstTrade = Object.values(data.trades)[0];
+                    const yInstrument = firstTrade.instrument_details;
+                    
+                    return fetch('/run_trade_regression', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            y_instrument: yInstrument,
+                            x_instruments: instruments
+                        })
+                    });
+                } else {
+                    throw new Error('No trades available for regression');
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateRegressionDisplay(data.results, instruments);
+                } else {
+                    alert('Error running regression: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error running regression: ' + error.message);
+            });
+        }
+        
+        function updateRegressionDisplay(results, instruments) {
+            instruments.forEach((instrument, instIndex) => {
+                [1, 2, 3].forEach(months => {
+                    const result = results[instrument];
+                    if (result && result[months] && result[months].regression) {
+                        const reg = result[months].regression;
+                        document.getElementById(`r2_${instIndex + 1}_${months}`).textContent = 
+                            reg.r_squared ? reg.r_squared.toFixed(3) : '--';
+                        document.getElementById(`beta_${instIndex + 1}_${months}`).textContent = 
+                            reg.beta ? reg.beta.toFixed(3) : '--';
+                    } else {
+                        document.getElementById(`r2_${instIndex + 1}_${months}`).textContent = '--';
+                        document.getElementById(`beta_${instIndex + 1}_${months}`).textContent = '--';
+                    }
+                });
+            });
+        }
+        
+        function updateCharts() {
+            // Update portfolio PnL chart
+            fetch('/get_portfolio_pnl_history')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const trace = {
+                        x: data.dates,
+                        y: data.pnl_values,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Portfolio PnL',
+                        line: { color: '#00d4ff' }
+                    };
+                    
+                    Plotly.newPlot('portfolioChart', [trace], {
+                        plot_bgcolor: '#1e1e1e',
+                        paper_bgcolor: '#1e1e1e',
+                        font: { color: '#ffffff' },
+                        xaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Date' },
+                        yaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'PnL' },
+                        margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
+                    });
+                }
+            })
+            .catch(error => console.error('Error updating portfolio chart:', error));
+            
+            // Update instrument chart (placeholder for now)
+            const instrumentTrace = {
+                x: [],
+                y: [],
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Instrument Performance',
+                line: { color: '#51cf66' }
+            };
+            
+            Plotly.newPlot('instrumentChart', [instrumentTrace], {
+                plot_bgcolor: '#1e1e1e',
+                paper_bgcolor: '#1e1e1e',
+                font: { color: '#ffffff' },
+                xaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Date' },
+                yaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Price' },
+                margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
+            });
+        }
+        
+        // New popup-based trading system
+        let storedTrades = [];
+        let positionCounter = 0;
+        
+        // Open popup for new trade entry
+        function addNewRow() {
+            openTradeModal();
+        }
+        
+        function clearLastRow() {
+            // Clear the last trade from the display
+            const tbody = document.getElementById('tradesGridBody');
+            const rows = tbody.querySelectorAll('tr');
+            if (rows.length > 0) {
+                const lastRow = rows[rows.length - 1];
+                lastRow.remove();
+                storedTrades.pop();
+            }
+        }
+        
+        function undoLastClear() {
+            // Re-add the last cleared trade
+            if (storedTrades.length > 0) {
+                displayTradesInGrid();
+            }
+        }
+        
+        function openTradeModal(tradeId = null) {
+            currentTradeId = tradeId;
+            
+            // Clear any previous errors
+            hideErrorBanner();
+            
+            // Show the modal first
+            document.getElementById('tradeModal').style.display = 'block';
+            
+            if (tradeId) {
+                // Editing existing trade - will be set by loadTradeForEditing
+                loadTradeForEditing(tradeId);
+            } else {
+                // New trade - clear the input field
+                document.getElementById('modalTitle').value = '';
+                clearModalForm();
+                
+                // Add position after modal is displayed
+                setTimeout(() => {
+                    addPosition('entry'); // Start with one entry position
+                    setupAutoUpdateListeners();
+                }, 50);
+            }
+        }
+        
+        function clearModalForm() {
+            // Clear basic info table - keep only the first row
+            const tbody = document.getElementById('basicInfoTableBody');
+            const firstRow = tbody.querySelector('tr');
+            firstRow.querySelector('.modal-trade-type').value = '';
+            firstRow.querySelector('.modal-instrument').value = '';
+            
+            // Clear live rate display
+            const liveRateDisplay = firstRow.querySelector('.live-rate-display');
+            if (liveRateDisplay) {
+                liveRateDisplay.textContent = '--';
+                liveRateDisplay.style.color = '#cccccc';
+            }
+            
+            // Remove any additional rows
+            const allRows = tbody.querySelectorAll('tr');
+            for (let i = 1; i < allRows.length; i++) {
+                allRows[i].remove();
+            }
+            
+            document.getElementById('positionsTableBody').innerHTML = '';
+            positionCounter = 0;
+            
+            // Clear total P&L display in basic info table
+            const totalTradePnLElement = document.getElementById('singleTotalPnL');
+            if (totalTradePnLElement) {
+                totalTradePnLElement.textContent = '--';
+                totalTradePnLElement.style.color = '#cccccc';
+            }
+        }
+        
+        function addInstrumentLine() {
+            const tbody = document.getElementById('basicInfoTableBody');
+            const newRow = document.createElement('tr');
+            
+            newRow.innerHTML = `
+                <td>
+                    <select class="modal-trade-type" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)">
+                        <option value="">Select Type</option>
+                        <option value="swap">Swap</option>
+                        <option value="future">Future</option>
+                        <option value="fx">FX</option>
+                        <option value="efp">EFP</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="text" class="modal-instrument" placeholder="e.g., aud.5y5y" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
+                </td>
+                <td style="position: relative;">
+                    <span class="live-rate-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
+                    <button class="btn-remove" onclick="removeInstrumentLine(this)" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%);">remove</button>
+                </td>
+                <td>
+                    <span class="total-pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
+                </td>
+            `;
+            
+            tbody.appendChild(newRow);
+        }
+        
+        function removeInstrumentLine(button) {
+            // Find the associated row by looking for the row that has this button as its removeButton
+            const tbody = document.getElementById('basicInfoTableBody');
+            const rows = tbody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                if (row.removeButton === button) {
+                    row.remove();
+                    button.remove(); // Also remove the button itself
+                }
+            });
+        }
+        
+        function addPosition() {
+            const tbody = document.getElementById('positionsTableBody');
+            const row = document.createElement('tr');
+            const positionId = `position_${positionCounter++}`;
+            
+            row.innerHTML = `
+                <td>
+                    <input type="number" data-position-price="${positionId}" placeholder="3.14" 
+                           onchange="calculatePnL(this)" step="0.01">
+                </td>
+                <td>
+                    <input type="number" data-position-size="${positionId}" placeholder="25" 
+                           onchange="calculatePnL(this)" step="1">
+                </td>
+                <td style="position: relative;">
+                    <span class="pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
+                    <button class="btn-remove" onclick="removePosition(this)" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%);">remove</button>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+        
+        function getAvailableInstruments() {
+            const basicInfoRows = document.getElementById('basicInfoTableBody').querySelectorAll('tr');
+            let options = '';
+            
+            basicInfoRows.forEach((row, index) => {
+                const instrumentInput = row.querySelector('input.modal-instrument');
+                if (instrumentInput && instrumentInput.value.trim()) {
+                    const instrument = instrumentInput.value.trim();
+                    options += `<option value="${instrument}">${instrument}</option>`;
+                }
+            });
+            
+            return options;
+        }
+        
+        function updateLiveRate(element) {
+            console.log('🔍 updateLiveRate called with element:', element);
+            
+            const row = element.closest('tr');
+            console.log('🔍 Found row:', row);
+            
+            const typeSelect = row.querySelector('.modal-trade-type');
+            const instrumentInput = row.querySelector('.modal-instrument');
+            const liveRateDisplay = row.querySelector('.live-rate-display');
+            
+            console.log('🔍 Elements found:', { typeSelect, instrumentInput, liveRateDisplay });
+            
+            if (!typeSelect || !instrumentInput || !liveRateDisplay) {
+                console.log('❌ Missing required elements');
+                return;
+            }
+            
+            const type = typeSelect.value.trim();
+            const instrument = instrumentInput.value.trim();
+            
+            console.log('🔍 Values:', { type, instrument });
+            
+            // Fetch live rates for swaps and futures with valid instrument syntax
+            if ((type === 'swap' || type === 'future') && instrument) {
+                console.log(`🔄 Fetching ${type} live rate for:`, instrument);
+                liveRateDisplay.textContent = 'Loading...';
+                liveRateDisplay.style.color = '#cccccc';
+                
+                if (type === 'swap') {
+                    // For swaps: First check if curves are loaded
+                    fetch('/curves_status')
+                    .then(response => response.json())
+                    .then(statusData => {
+                        console.log('📊 Curves status:', statusData);
+                        
+                        if (!statusData.loaded) {
+                            console.log('⚠️ Curves not loaded, cannot fetch swap live rates');
+                            liveRateDisplay.textContent = 'No curves';
+                            liveRateDisplay.style.color = '#ff9f43';
+                            return;
+                        }
+                        
+                        // Curves are loaded, proceed with swap rate fetch
+                        console.log('✅ Curves loaded, fetching swap rate for:', instrument);
+                        
+                        return fetch('/get_realtime_rates', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                expressions: [{
+                                    label: 'temp',
+                                    expression: instrument,
+                                    type: type  // Pass the trade type to backend
+                                }]
+                            })
+                        });
+                    })
+                    .then(response => {
+                        if (!response) return; // Curves not loaded case
+                        
+                        console.log('📡 Swap rate fetch response status:', response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data) return; // Curves not loaded case
+                        
+                        console.log('📊 Swap rate response data:', data);
+                        
+                        if (data.success && data.rates) {
+                            const rate = data.rates.temp;
+                            console.log('📈 Swap rate received:', rate);
+                            
+                            if (rate && rate !== '--') {
+                                liveRateDisplay.textContent = rate;
+                                liveRateDisplay.style.color = '#00d4ff'; // Blue color for valid rates
+                                console.log('✅ Swap live rate updated:', rate);
+                            } else {
+                                liveRateDisplay.textContent = '--';
+                                liveRateDisplay.style.color = '#cccccc';
+                                console.log('❌ No swap live rate available for:', instrument);
+                            }
+                        } else {
+                            liveRateDisplay.textContent = '--';
+                            liveRateDisplay.style.color = '#cccccc';
+                            console.error('❌ Error in swap response:', data.error || 'No success flag');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Network error fetching swap live rate:', error);
+                        liveRateDisplay.textContent = 'Error';
+                        liveRateDisplay.style.color = '#ff6b6b'; // Red color for errors
+                    });
+                    
+                } else if (type === 'future') {
+                    // For futures: Fetch rate directly (no curves dependency)
+                    console.log('🔄 Fetching futures rate for:', instrument);
+                    
+                    fetch('/get_realtime_rates', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            expressions: [{
+                                label: 'temp',
+                                expression: instrument,
+                                type: type  // Pass the trade type to backend
+                            }]
+                        })
+                    })
+                    .then(response => {
+                        console.log('📡 Futures rate fetch response status:', response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('📊 Futures rate response data:', data);
+                        
+                        if (data.success && data.rates) {
+                            const rate = data.rates.temp;
+                            console.log('📈 Futures rate received:', rate);
+                            
+                            if (rate && rate !== '--') {
+                                liveRateDisplay.textContent = rate;
+                                liveRateDisplay.style.color = '#00d4ff'; // Blue color for valid rates
+                                console.log('✅ Futures live rate updated:', rate);
+                            } else {
+                                liveRateDisplay.textContent = '--';
+                                liveRateDisplay.style.color = '#cccccc';
+                                console.log('❌ No futures live rate available for:', instrument);
+                            }
+                        } else {
+                            liveRateDisplay.textContent = '--';
+                            liveRateDisplay.style.color = '#cccccc';
+                            console.error('❌ Error in futures response:', data.error || 'No success flag');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Network error fetching futures live rate:', error);
+                        liveRateDisplay.textContent = 'Error';
+                        liveRateDisplay.style.color = '#ff6b6b'; // Red color for errors
+                    });
+                }
+                
+            } else {
+                console.log('🔍 Not fetching rate - type:', type, 'instrument:', instrument);
+                liveRateDisplay.textContent = '--';
+                liveRateDisplay.style.color = '#cccccc';
+            }
+        }
+        
+        function removePosition(button) {
+            button.closest('tr').remove();
+        }
+        
+        function saveTrade() {
+            // Validate form first
+            if (!validateTradeForm()) {
+                return; // Validation failed, errors are already displayed
+            }
+            
+            // Collect basic trade info from the table
+            const tradeIdentifier = document.getElementById('modalTitle').value.trim();
+            
+            // Collect all rows from basic info table
+            const basicInfoRows = document.getElementById('basicInfoTableBody').querySelectorAll('tr');
+            const typologies = [];
+            const instruments = [];
+            
+            console.log('🔍 Found', basicInfoRows.length, 'basic info rows');
+            
+            basicInfoRows.forEach((row, index) => {
+                const tradeTypeSelect = row.querySelector('select.modal-trade-type');
+                const instrumentInput = row.querySelector('input.modal-instrument');
+                
+                if (tradeTypeSelect && instrumentInput) {
+                    const tradeType = tradeTypeSelect.value.trim();
+                    const instrument = instrumentInput.value.trim();
+                    
+                    console.log(`🔍 Row ${index + 1} values: Type="${tradeType}", Instrument="${instrument}"`);
+                    
+                    if (tradeType && instrument) {
+                        typologies.push(tradeType);
+                        instruments.push(instrument);
+                        console.log(`✅ Added to arrays: Type="${tradeType}", Instrument="${instrument}"`);
+                    }
+                }
+            });
+            
+            console.log('📊 Final arrays:', { typologies, instruments });
+            
+            // Collect positions (all positions are treated as entry positions now)
+            const positions = [];
+            const rows = document.getElementById('positionsTableBody').querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                const priceInput = row.querySelector('[data-position-price]');
+                const sizeInput = row.querySelector('[data-position-size]');
+                
+                const price = priceInput ? priceInput.value.trim() : '';
+                const size = sizeInput ? sizeInput.value.trim() : '';
+                
+                if (price && size) {
+                    // Convert price based on trade type - only divide by 100 for swaps
+                    let priceValue;
+                    if (typologies.length > 0 && typologies[0].toLowerCase() === 'swap') {
+                        // For swaps: convert percentage to decimal (3.15 -> 0.0315)
+                        priceValue = parseFloat(price) / 100;
+                    } else {
+                        // For futures/fx/efp: use price directly (96.40 stays 96.40)
+                        priceValue = parseFloat(price);
+                    }
+                    
+                    positions.push({
+                        price: priceValue,
+                        size: parseFloat(size)
+                    });
+                }
+            });
+            
+            // All positions are entry positions now
+            const entryPositions = positions;
+            const exitPositions = [];
+            
+            // Check if we're editing an existing trade or creating a new one
+            if (currentTradeId) {
+                // Updating existing trade
+                console.log('💾 Updating existing trade:', currentTradeId);
+                
+                const updateData = {
+                    trade_id: currentTradeId,
+                    typologies: typologies,
+                    instruments: instruments,
+                    entry_prices: entryPositions.map(p => p.price),
+                    entry_sizes: entryPositions.map(p => p.size),
+                    exit_prices: exitPositions.map(p => p.price),
+                    exit_sizes: exitPositions.map(p => p.size)
+                };
+                
+                fetch('/update_trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updateData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('✅ Trade updated successfully');
+                        
+                        // Check if curves exist and auto-update P&L for the updated trade
+                        fetch('/curves_status')
+                        .then(response => response.json())
+                        .then(curveData => {
+                            if (curveData.loaded) {
+                                console.log('✅ Curves exist, auto-updating P&L for updated trade...');
+                                
+                                // Auto-update P&L since curves exist
+                                fetch('/update_realtime_pnl', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' }
+                                })
+                                .then(response => response.json())
+                                .then(pnlData => {
+                                    if (pnlData.success) {
+                                        console.log('✅ Auto P&L update successful for updated trade');
+                                    }
+                                    closeTradeModal();
+                                    loadTradesFromBackend();
+                                    updateCharts();
+                                })
+                                .catch(error => {
+                                    console.error('❌ Auto P&L update error:', error);
+                                    closeTradeModal();
+                                    loadTradesFromBackend();
+                                    updateCharts();
+                                });
+                            } else {
+                                console.log('📊 No curves, just saving updated trade without P&L update');
+                                closeTradeModal();
+                                loadTradesFromBackend();
+                                updateCharts();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('❌ Error checking curves:', error);
+                            closeTradeModal();
+                            loadTradesFromBackend();
+                            updateCharts();
+                        });
+                        
+                    } else {
+                        alert('Error updating trade: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error updating trade:', error);
+                    alert('Error updating trade: ' + error.message);
+                });
+                
+            } else {
+                // Creating new trade
+                console.log('💾 Creating new trade');
+                
+                const submitData = {
+                    name: tradeIdentifier || `Trade ${Date.now()}`,
+                    typologies: typologies,
+                    instruments: instruments,
+                    entry_prices: entryPositions.map(p => p.price),
+                    entry_sizes: entryPositions.map(p => p.size),
+                    exit_prices: exitPositions.map(p => p.price),
+                    exit_sizes: exitPositions.map(p => p.size)
+                };
+                
+                fetch('/add_trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(submitData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('✅ Trade created successfully');
+                        
+                        // Check if curves exist and auto-update P&L for the new trade
+                        fetch('/curves_status')
+                        .then(response => response.json())
+                        .then(curveData => {
+                            if (curveData.loaded) {
+                                console.log('✅ Curves exist, auto-updating P&L for new trade...');
+                                
+                                // Auto-update P&L since curves exist
+                                fetch('/update_realtime_pnl', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' }
+                                })
+                                .then(response => response.json())
+                                .then(pnlData => {
+                                    if (pnlData.success) {
+                                        console.log('✅ Auto P&L update successful for new trade');
+                                    }
+                                    closeTradeModal();
+                                    loadTradesFromBackend();
+                                    updateCharts();
+                                })
+                                .catch(error => {
+                                    console.error('❌ Auto P&L update error:', error);
+                                    closeTradeModal();
+                                    loadTradesFromBackend();
+                                    updateCharts();
+                                });
+                            } else {
+                                console.log('📊 No curves, just saving trade without P&L update');
+                                closeTradeModal();
+                                loadTradesFromBackend();
+                                updateCharts();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('❌ Error checking curves:', error);
+                            closeTradeModal();
+                            loadTradesFromBackend();
+                            updateCharts();
+                        });
+                        
+                    } else {
+                        alert('Error adding trade: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error adding trade:', error);
+                    alert('Error adding trade: ' + error.message);
+                });
+            }
+        }
+        
+        function displayTradesInGrid() {
+            const tbody = document.getElementById('tradesGridBody');
+            tbody.innerHTML = '';
+            
+            storedTrades.forEach(trade => {
+                const row = document.createElement('tr');
+                
+                // Determine P&L color
+                let pnlColor = '#00d4ff'; // Default aqua color
+                let pnlDisplay = trade.storedPnL || '--';
+                
+                if (pnlDisplay !== '--' && pnlDisplay !== 'No curves') {
+                    // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
+                    const pnlValue = parseFloat(pnlDisplay.replace(/[$,]/g, ''));
+                    if (!isNaN(pnlValue)) {
+                        if (pnlValue > 0) {
+                            pnlColor = '#51cf66'; // Green for profit
+                        } else if (pnlValue < 0) {
+                            pnlColor = '#ff6b6b'; // Red for loss
+                        }
+                    }
+                }
+                
+                row.innerHTML = `
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.type}</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.identifier}</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.instrument}</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${(trade.avgEntry * 100).toFixed(2)}%</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor};" class="pnl-cell">${pnlDisplay}</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                    <td style="text-align: center; padding: 4px;">
+                        <button class="btn-remove" onclick="removeTrade('${trade.id}')" style="position: static;">remove</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+        
+        // Function to remove a trade
+        function removeTrade(tradeId) {
+            console.log('🗑️ Removing trade:', tradeId);
+            
+            if (confirm('Are you sure you want to remove this trade?')) {
+                fetch(`/delete_trade/${tradeId}`, { 
+                    method: 'DELETE' 
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('✅ Trade removed from backend');
+                        // Reload trades from backend file
+                        loadTradesFromBackend();
+                        updateCharts();
+                    } else {
+                        alert('Error removing trade: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error removing trade:', error);
+                    alert('Error removing trade: ' + error.message);
+                });
+            }
+        }
+        
+        function loadTradeForEditing(tradeId) {
+            console.log('🔄 Loading trade for editing:', tradeId);
+            
+            // Instead of using storedTrades, fetch fresh data from backend
+            fetch(`/get_trade_details/${tradeId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const trade = data.trade;
+                    console.log('📊 Trade data from backend:', trade);
+                    
+                    // Set the modal title to the trade identifier
+                    document.getElementById('modalTitle').value = trade.trade_id;
+                    
+                    // Clear the basic info table first
+                    const tbody = document.getElementById('basicInfoTableBody');
+                    tbody.innerHTML = '';
+                    
+                    // Get the typologies and instruments arrays
+                    const typologies = Array.isArray(trade.typology) ? trade.typology : [trade.typology];
+                    const instruments = Array.isArray(trade.instrument_details) ? trade.instrument_details : [trade.instrument_details];
+                    
+                    console.log('📋 Typologies:', typologies);
+                    console.log('📋 Instruments:', instruments);
+                    
+                    // Create rows for each typology/instrument pair
+                    const maxRows = Math.max(typologies.length, instruments.length);
+                    for (let i = 0; i < maxRows; i++) {
+                        const newRow = document.createElement('tr');
+                        
+                        newRow.innerHTML = `
+                            <td>
+                                <select class="modal-trade-type" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)">
+                                    <option value="">Select Type</option>
+                                    <option value="swap">Swap</option>
+                                    <option value="future">Future</option>
+                                    <option value="fx">FX</option>
+                                    <option value="efp">EFP</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" class="modal-instrument" placeholder="e.g., aud.5y5y" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
+                            </td>
+                            <td style="position: relative;">
+                                <span class="live-rate-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
+                                ${i > 0 ? '<button class="btn-remove" onclick="removeInstrumentLine(this)" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%);">remove</button>' : ''}
+                            </td>
+                            <td>
+                                <span class="total-pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
+                            </td>
+                        `;
+                        
+                        tbody.appendChild(newRow);
+                        
+                        // Set the values
+                        const typeSelect = newRow.querySelector('.modal-trade-type');
+                        const instrumentInput = newRow.querySelector('.modal-instrument');
+                        
+                        if (i < typologies.length && typologies[i]) {
+                            typeSelect.value = typologies[i];
+                        }
+                        if (i < instruments.length && instruments[i]) {
+                            instrumentInput.value = instruments[i];
+                        }
+                        
+                        console.log(`✅ Row ${i + 1}: Type="${typeSelect.value}", Instrument="${instrumentInput.value}"`);
+                    }
+                    
+                    // Clear and load positions
+                    const positionsTableBody = document.getElementById('positionsTableBody');
+                    positionsTableBody.innerHTML = '';
+                    
+                    // Add entry positions (all positions are now just positions without type)
+                    (trade.entry_prices || []).forEach((price, index) => {
+                        if (trade.entry_sizes && trade.entry_sizes[index]) {
+                            addPosition();
+                            const lastRow = positionsTableBody.lastElementChild;
+                            lastRow.querySelector('[data-position-price]').value = price;
+                            lastRow.querySelector('[data-position-size]').value = trade.entry_sizes[index];
+                        }
+                    });
+                    
+                    // Note: Exit positions are no longer supported in the simplified interface
+                    // All positions are treated as entry positions
+                    
+                    console.log('✅ Trade loaded for editing with all typologies and instruments');
+                    
+                    // Set up auto-update listeners for the loaded trade and trigger live rate updates
+                    setTimeout(() => {
+                        setupAutoUpdateListeners();
+                        
+                        // Trigger live rate updates for all loaded instruments
+                        const basicInfoRows = document.querySelectorAll('#basicInfoTableBody tr');
+                        basicInfoRows.forEach(row => {
+                            const typeSelect = row.querySelector('.modal-trade-type');
+                            const instrumentInput = row.querySelector('.modal-instrument');
+                            
+                            if (typeSelect && instrumentInput && 
+                                typeSelect.value.trim() && instrumentInput.value.trim()) {
+                                console.log('🔄 Auto-updating live rate for loaded trade:', instrumentInput.value);
+                                updateLiveRate(instrumentInput);
+                            }
+                        });
+                    }, 200);
+                    
+                } else {
+                    alert('Error loading trade details: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error loading trade for editing:', error);
+                alert('Error loading trade for editing: ' + error.message);
+            });
+        }
+        
+        // Show/hide secondary instrument based on type
+        document.addEventListener('change', function(e) {
+            if (e.target.id === 'modalTradeType') {
+                const secondaryGroup = document.getElementById('secondaryInstrumentGroup');
+                if (e.target.value === 'efp') {
+                    secondaryGroup.style.display = 'block';
+                } else {
+                    secondaryGroup.style.display = 'none';
+                }
+            }
+        });
+        
+        // Function to load trades from backend and display in grid
+        function loadTradesFromBackend() {
+            console.log('🔄 Loading trades from backend...');
+            
+            fetch('/get_trades')
+            .then(response => {
+                console.log('📡 Response received:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('📊 Backend data:', data);
+                
+                if (data.success) {
+                    // Clear local storage
+                    storedTrades = [];
+                    
+                    // Handle portfolio metadata and timestamp
+                    if (data.portfolio_metadata) {
+                        const metadata = data.portfolio_metadata;
+                        const timestampDiv = document.getElementById('pnlTimestamp');
+                        const timestampValue = document.getElementById('timestampValue');
+                        
+                        if (metadata.last_pnl_update) {
+                            const date = new Date(metadata.last_pnl_update);
+                            const formattedTime = date.toLocaleString('en-US', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                            });
+                            
+                            timestampValue.textContent = formattedTime;
+                            timestampDiv.style.display = 'block';
+                        } else {
+                            timestampDiv.style.display = 'none';
+                        }
+                    }
+                    
+                    // Convert backend trades to frontend format
+                    Object.values(data.trades).forEach(backendTrade => {
+                        console.log('🔄 Processing trade:', backendTrade.trade_id);
+                        
+                        // Calculate total entry size safely
+                        const totalEntrySize = (backendTrade.entry_sizes || []).reduce((sum, size) => sum + (size || 0), 0);
+                        
+                        // Format stored P&L for display
+                        let storedPnLDisplay = '--';
+                        if (backendTrade.stored_pnl !== undefined && backendTrade.stored_pnl !== 0) {
+                            const pnl = backendTrade.stored_pnl;
+                            storedPnLDisplay = `$${pnl.toLocaleString('en-US', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
+                            })}`;
+                        }
+                        
+                        const trade = {
+                            id: backendTrade.trade_id,
+                            type: Array.isArray(backendTrade.typology) ? backendTrade.typology[0] || '' : backendTrade.typology || '',
+                            identifier: backendTrade.trade_id,
+                            instrument: Array.isArray(backendTrade.instrument_details) ? backendTrade.instrument_details[0] || '' : backendTrade.instrument_details || '',
+                            positions: [],
+                            avgEntry: backendTrade.weighted_avg_entry || 0,
+                            totalSize: totalEntrySize,
+                            storedPnL: storedPnLDisplay
+                        };
+                        
+                        // Add entry positions
+                        (backendTrade.entry_prices || []).forEach((price, index) => {
+                            if (backendTrade.entry_sizes && backendTrade.entry_sizes[index]) {
+                                trade.positions.push({
+                                    type: 'entry',
+                                    price: price,
+                                    size: backendTrade.entry_sizes[index]
+                                });
+                            }
+                        });
+                        
+                        // Add exit positions
+                        (backendTrade.exit_prices || []).forEach((price, index) => {
+                            if (backendTrade.exit_sizes && backendTrade.exit_sizes[index]) {
+                                trade.positions.push({
+                                    type: 'exit',
+                                    price: price,
+                                    size: backendTrade.exit_sizes[index]
+                                });
+                            }
+                        });
+                        
+                        storedTrades.push(trade);
+                        console.log('✅ Added trade to local storage:', trade.identifier);
+                    });
+                    
+                    // Display trades in grid
+                    console.log(`📋 Displaying ${storedTrades.length} trades in grid`);
+                    displayTradesInGrid();
+                    
+                    console.log(`📂 Successfully loaded ${storedTrades.length} trades from backend`);
+                } else {
+                    console.error('❌ Backend error:', data.error);
+                    alert('Error loading trades: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('❌ Network error loading trades:', error);
+                alert('Network error loading trades: ' + error.message);
+            });
+        }
+        
+        // Function to set up auto-update listeners for live rates and P&L
+        function setupAutoUpdateListeners() {
+            console.log('🔧 Setting up auto-update listeners...');
+            
+            // Check if curves are loaded first
+            fetch('/curves_status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.loaded) {
+                    console.log('✅ Curves are loaded, enabling auto-updates');
+                    
+                    // Set up listeners for instrument inputs
+                    const instrumentInputs = document.querySelectorAll('.modal-instrument');
+                    instrumentInputs.forEach(input => {
+                        input.addEventListener('input', function() {
+                            // Debounce the update to avoid too many requests
+                            clearTimeout(this.updateTimeout);
+                            this.updateTimeout = setTimeout(() => {
+                                updateLiveRate(this);
+                            }, 500);
+                        });
+                    });
+                    
+                    // Set up listeners for position inputs
+                    const positionInputs = document.querySelectorAll('[data-position-price], [data-position-size]');
+                    positionInputs.forEach(input => {
+                        input.addEventListener('input', function() {
+                            // Debounce the P&L calculation
+                            clearTimeout(this.pnlTimeout);
+                            this.pnlTimeout = setTimeout(() => {
+                                calculatePnL(this);
+                            }, 500);
+                        });
+                    });
+                    
+                    // Trigger initial updates if data is already present
+                    setTimeout(() => {
+                        // Update live rates for any existing instruments
+                        const basicInfoRows = document.querySelectorAll('#basicInfoTableBody tr');
+                        basicInfoRows.forEach(row => {
+                            const typeSelect = row.querySelector('.modal-trade-type');
+                            const instrumentInput = row.querySelector('.modal-instrument');
+                            
+                            if (typeSelect && instrumentInput && 
+                                typeSelect.value.trim() && instrumentInput.value.trim()) {
+                                console.log('🔄 Auto-updating live rate for existing instrument:', instrumentInput.value);
+                                updateLiveRate(instrumentInput);
+                            }
+                        });
+                        
+                        // Update P&L for any existing positions
+                        const positionRows = document.querySelectorAll('#positionsTableBody tr');
+                        positionRows.forEach(row => {
+                            const priceInput = row.querySelector('[data-position-price]');
+                            const sizeInput = row.querySelector('[data-position-size]');
+                            
+                            if (priceInput && sizeInput && 
+                                priceInput.value.trim() && sizeInput.value.trim()) {
+                                console.log('🔄 Auto-updating P&L for position');
+                                calculatePnL(priceInput);
+                            }
+                        });
+                    }, 200);
+                    
+                } else {
+                    console.log('⚠️ Curves not loaded, auto-updates disabled');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error checking curves status:', error);
+            });
+        }
+        
+        // Add immediate console log to check if script is loading
+        console.log('🚀 Trading page JavaScript loaded');
+        
+        // Test function to verify curve data accessibility
+        function testLiveRateAPI() {
+            console.log('🧪 Testing live rate API...');
+            
+            fetch('/get_realtime_rates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    expressions: [{
+                        label: 'test',
+                        expression: 'aud.5y5y'
+                    }]
+                })
+            })
+            .then(response => {
+                console.log('🧪 Test API response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('🧪 Test API response data:', data);
+                if (data.success && data.rates && data.rates.test) {
+                    console.log('✅ API test successful! Rate:', data.rates.test);
+                } else {
+                    console.log('❌ API test failed:', data.error || 'No rate returned');
+                }
+            })
+            .catch(error => {
+                console.error('❌ API test network error:', error);
+            });
+        }
+        
+        // Run test after a short delay to ensure page is loaded
+        setTimeout(testLiveRateAPI, 2000);
+        
+        // Manual test function for the button in modal
+        function testLiveRateInModal() {
+            console.log('🧪 Manual test triggered from modal button');
+            
+            // Find the first row in the basic info table
+            const firstRow = document.querySelector('#basicInfoTableBody tr');
+            if (firstRow) {
+                const typeSelect = firstRow.querySelector('.modal-trade-type');
+                const instrumentInput = firstRow.querySelector('.modal-instrument');
+                
+                // Set test values
+                typeSelect.value = 'swap';
+                instrumentInput.value = 'aud.5y5y';
+                
+                console.log('🧪 Set test values: swap, aud.5y5y');
+                
+                // Trigger the live rate update
+                updateLiveRate(instrumentInput);
+            } else {
+                console.log('❌ No rows found in basic info table');
+            }
+        }
+        
+        // Function to check curves and auto-update P&L on page load
+        function checkCurvesAndAutoUpdate() {
+            console.log('🔍 Checking if realtime curves exist on page load...');
+            
+            fetch('/curves_status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.loaded) {
+                    console.log('✅ Realtime curves exist, auto-updating P&L...');
+                    
+                    // Auto-update P&L since curves exist
+                    fetch('/update_realtime_pnl', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(pnlData => {
+                        if (pnlData.success) {
+                            console.log('✅ Auto P&L update successful on page load');
+                            // Load trades with fresh P&L data
+                            loadTradesFromBackend();
+                        } else {
+                            console.log('⚠️ Auto P&L update failed, loading stored P&L');
+                            // Still load trades with stored P&L
+                            loadTradesFromBackend();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Auto P&L update error:', error);
+                        // Still load trades with stored P&L
+                        loadTradesFromBackend();
+                    });
+                } else {
+                    console.log('📊 No realtime curves, loading stored P&L from JSON');
+                    // No curves, just load stored P&L from JSON
+                    loadTradesFromBackend();
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error checking curves status:', error);
+                // Fallback to loading stored P&L
+                loadTradesFromBackend();
+            });
+        }
+        
+        // Load trades on page load with auto P&L update if curves exist
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 DOMContentLoaded event fired');
+            updateCharts();
+            checkCurvesAndAutoUpdate(); // Check curves and auto-update P&L
+        });
+        
+        // Also try loading immediately in case DOMContentLoaded already fired
+        if (document.readyState === 'loading') {
+            console.log('📄 Document still loading, waiting for DOMContentLoaded');
+        } else {
+            console.log('📄 Document already loaded, executing immediately');
+            setTimeout(() => {
+                updateCharts();
+                checkCurvesAndAutoUpdate();
+            }, 100);
+        }
+        
+        // Removed formatting functions - inputs now display exactly what user enters
+        
+        // P&L calculation function
+        function calculatePnL(input) {
+            console.log('🧮 Calculating P&L for position...');
+            
+            const row = input.closest('tr');
+            const priceInput = row.querySelector('[data-position-price]');
+            const sizeInput = row.querySelector('[data-position-size]');
+            const pnlDisplay = row.querySelector('.pnl-display');
+            
+            if (!priceInput || !sizeInput || !pnlDisplay) {
+                console.log('❌ Missing elements for P&L calculation');
+                return;
+            }
+            
+            // Get basic trade info
+            const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
+            if (!basicInfoRow) {
+                console.log('❌ No basic info row found');
+                return;
+            }
+            
+            const tradeTypeSelect = basicInfoRow.querySelector('.modal-trade-type');
+            const instrumentInput = basicInfoRow.querySelector('.modal-instrument');
+            
+            if (!tradeTypeSelect || !instrumentInput) {
+                console.log('❌ Missing basic trade info elements');
+                return;
+            }
+            
+            const tradeType = tradeTypeSelect.value.trim();
+            const instrument = instrumentInput.value.trim();
+            
+            // Get values directly from inputs (no formatting to remove)
+            const price = parseFloat(priceInput.value);
+            const size = parseFloat(sizeInput.value);
+            
+            console.log('📊 P&L calculation inputs:', {
+                tradeType, instrument, price, size
+            });
+            
+            // Only calculate P&L for swaps with valid data
+            if (tradeType === 'swap' && instrument && !isNaN(price) && !isNaN(size)) {
+                pnlDisplay.textContent = 'Calculating...';
+                pnlDisplay.style.color = '#cccccc';
+                
+                // First check if curves are loaded
+                fetch('/curves_status')
+                .then(response => response.json())
+                .then(statusData => {
+                    console.log('📊 Curves status for P&L:', statusData);
+                    
+                    if (!statusData.loaded) {
+                        console.log('⚠️ Curves not loaded, cannot calculate P&L');
+                        pnlDisplay.textContent = 'No curves';
+                        pnlDisplay.style.color = '#ff9f43';
+                        return;
+                    }
+                    
+                    // Curves are loaded, proceed with P&L calculation
+                    console.log('✅ Curves loaded, calculating P&L for:', instrument);
+                    
+                    return fetch('/calculate_swap_pnl', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            tradeType: tradeType,
+                            instrument: instrument,
+                            price: price,
+                            size: size
+                        })
+                    });
+                })
+                .then(response => {
+                    if (!response) return; // Curves not loaded case
+                    
+                    console.log('📡 P&L calculation response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data) return; // Curves not loaded case
+                    
+                    console.log('📊 P&L response:', data);
+                    
+                    if (data.success && data.pnl !== undefined) {
+                        const pnl = data.pnl;
+                        pnlDisplay.textContent = `$${pnl.toLocaleString('en-US', {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        })}`;
+                        
+                        // Color code the P&L
+                        if (pnl > 0) {
+                            pnlDisplay.style.color = '#51cf66'; // Green for profit
+                        } else if (pnl < 0) {
+                            pnlDisplay.style.color = '#ff6b6b'; // Red for loss
+                        } else {
+                            pnlDisplay.style.color = '#cccccc'; // Gray for zero
+                        }
+                        
+                        console.log('✅ P&L calculated:', pnl);
+                        
+                        // Update total trade P&L after individual position calculation
+                        updateTotalTradePnL();
+                    } else {
+                        pnlDisplay.textContent = 'Error';
+                        pnlDisplay.style.color = '#ff6b6b';
+                        console.error('❌ P&L calculation error:', data.error);
+                        
+                        // Update total trade P&L even if this position failed
+                        updateTotalTradePnL();
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ P&L calculation network error:', error);
+                    pnlDisplay.textContent = 'Error';
+                    pnlDisplay.style.color = '#ff6b6b';
+                    
+                    // Update total trade P&L even if this position failed
+                    updateTotalTradePnL();
+                });
+            } else {
+                pnlDisplay.textContent = '--';
+                pnlDisplay.style.color = '#cccccc';
+                console.log('🔍 Not calculating P&L - missing or invalid data');
+                
+                // Update total trade P&L
+                updateTotalTradePnL();
+            }
+        }
+        
+        // Function to calculate and display total trade P&L
+        function updateTotalTradePnL() {
+            console.log('🧮 Updating total trade P&L...');
+            
+            const positionRows = document.querySelectorAll('#positionsTableBody tr');
+            let totalPnL = 0;
+            let positionCount = 0;
+            let hasValidPnL = false;
+            
+            positionRows.forEach(row => {
+                const pnlDisplay = row.querySelector('.pnl-display');
+                
+                if (pnlDisplay) {
+                    const pnlText = pnlDisplay.textContent.trim();
+                    
+                    // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
+                    if (pnlText && pnlText !== '--' && pnlText !== 'Error' && pnlText !== 'Calculating...' && pnlText !== 'No curves') {
+                        const pnlValue = parseFloat(pnlText.replace(/[$,]/g, ''));
+                        
+                        if (!isNaN(pnlValue)) {
+                            hasValidPnL = true;
+                            totalPnL += pnlValue;
+                            positionCount++;
+                        }
+                    }
+                }
+            });
+            
+            // Update ALL total P&L displays in the basic info table
+            const totalTradePnLElements = document.querySelectorAll('.total-pnl-display');
+            
+            totalTradePnLElements.forEach(element => {
+                if (hasValidPnL) {
+                    // Display calculated total P&L
+                    element.textContent = `$${totalPnL.toLocaleString('en-US', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    })}`;
+                    element.style.color = totalPnL >= 0 ? '#51cf66' : '#ff6b6b';
+                } else {
+                    // No valid P&L data available
+                    element.textContent = '--';
+                    element.style.color = '#cccccc';
+                }
+            });
+            
+            console.log('✅ Total trade P&L updated for all rows:', {
+                totalPnL: totalPnL,
+                positionCount: positionCount,
+                elementsUpdated: totalTradePnLElements.length
+            });
+        }
+        
+        // Function to update real-time P&L (matching charts page format)
+        function updateRealtimePnL() {
+            console.log('🔄 Starting real-time P&L update...');
+            
+            const button = document.getElementById('load-pnl-btn');
+            const buttonText = document.querySelector('.pnl-button-text');
+            const loadingSpinner = document.querySelector('.pnl-loading-spinner');
+            
+            // Show loading state on button (matching charts page format)
+            buttonText.style.display = 'none';
+            loadingSpinner.style.display = 'inline';
+            button.disabled = true;
+            
+            fetch('/update_realtime_pnl', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('📊 P&L update response:', data);
+                
+                if (data.success) {
+                    console.log('✅ P&L update successful');
+                    
+                    // Update timestamp display
+                    const timestampDiv = document.getElementById('pnlTimestamp');
+                    const timestampValue = document.getElementById('timestampValue');
+                    
+                    if (data.timestamp) {
+                        const date = new Date(data.timestamp);
+                        const formattedTime = date.toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                        });
+                        
+                        timestampValue.textContent = formattedTime;
+                        timestampDiv.style.display = 'block';
+                    }
+                    
+                    // Reload trades to show updated P&L
+                    loadTradesFromBackend();
+                    
+                    // Show success message briefly
+                    buttonText.textContent = `✅ Updated (${data.trades_updated} trades)`;
+                    buttonText.style.display = 'inline';
+                    loadingSpinner.style.display = 'none';
+                    
+                    setTimeout(() => {
+                        buttonText.textContent = 'Load Real Time Data + P&L';
+                    }, 3000);
+                    
+                } else {
+                    console.error('❌ P&L update failed:', data.error);
+                    alert('P&L update failed: ' + (data.error || 'Unknown error'));
+                    buttonText.textContent = 'Load Real Time Data + P&L';
+                    buttonText.style.display = 'inline';
+                    loadingSpinner.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                console.error('❌ P&L update network error:', error);
+                alert('Network error during P&L update: ' + error.message);
+                buttonText.textContent = 'Load Real Time Data + P&L';
+                buttonText.style.display = 'inline';
+                loadingSpinner.style.display = 'none';
+            })
+            .finally(() => {
+                // Re-enable button
+                button.disabled = false;
+            });
+        }
+        
+        // Add event listener for the P&L update button
+        document.getElementById('load-pnl-btn').addEventListener('click', updateRealtimePnL);
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('tradeModal');
+            if (event.target === modal) {
+                closeTradeModal();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "portfolio_metadata": {
+    "last_pnl_update": "2025-11-06T15:57:11.785600",
+    "total_portfolio_pnl": 0.0
+  },
+  "trades": {
+    "traed 1": {
+      "trade_id": "traed 1",
+      "typology": [
+        "swap"
+      ],
+      "secondary_typology": null,
+      "prices": [],
+      "sizes": [],
+      "instrument_details": [
+        "aud.10y10y"
+      ],
+      "stored_pnl": 0.0,
+      "pnl_timestamp": "2025-11-06T16:08:38.829236"
+    }
+  }
+}
