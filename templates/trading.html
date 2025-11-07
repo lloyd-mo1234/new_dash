@@ -1419,6 +1419,11 @@
             
             console.log('🔍 Values:', { type, instrument });
             
+            // If editing an existing trade and expression changed, auto-update trade object
+            if (currentTradeId && instrument) {
+                autoUpdateTradeExpression();
+            }
+            
             // Fetch live rates for swaps and futures with valid instrument syntax
             if ((type === 'swap' || type === 'future') && instrument) {
                 console.log(`🔄 Fetching ${type} live rate for:`, instrument);
@@ -2095,6 +2100,183 @@
             .catch(error => {
                 console.error('❌ Network error loading trades:', error);
                 alert('Network error loading trades: ' + error.message);
+            });
+        }
+        
+        // Function to auto-update trade expression and recalculate P&L when expression changes
+        function autoUpdateTradeExpression() {
+            if (!currentTradeId) {
+                console.log('⚠️ No currentTradeId, skipping auto-update');
+                return;
+            }
+            
+            console.log('🔄 Auto-updating trade expression for:', currentTradeId);
+            
+            // Debounce to avoid too many updates
+            clearTimeout(window.expressionUpdateTimeout);
+            window.expressionUpdateTimeout = setTimeout(() => {
+                // Collect current expression data from modal
+                const basicInfoRows = document.getElementById('basicInfoTableBody').querySelectorAll('tr');
+                const typologies = [];
+                const instruments = [];
+                
+                basicInfoRows.forEach(row => {
+                    const tradeTypeSelect = row.querySelector('select.modal-trade-type');
+                    const instrumentInput = row.querySelector('input.modal-instrument');
+                    
+                    if (tradeTypeSelect && instrumentInput) {
+                        const tradeType = tradeTypeSelect.value.trim();
+                        const instrument = instrumentInput.value.trim();
+                        
+                        if (tradeType && instrument) {
+                            typologies.push(tradeType);
+                            instruments.push(instrument);
+                        }
+                    }
+                });
+                
+                // Collect positions (keep existing positions)
+                const positions = [];
+                const positionRows = document.getElementById('positionsTableBody').querySelectorAll('tr');
+                
+                positionRows.forEach(row => {
+                    const priceInput = row.querySelector('[data-position-price]');
+                    const sizeInput = row.querySelector('[data-position-size]');
+                    
+                    const price = priceInput ? priceInput.value.trim() : '';
+                    const size = sizeInput ? sizeInput.value.trim() : '';
+                    
+                    if (price && size) {
+                        let priceValue;
+                        if (typologies.length > 0 && typologies[0].toLowerCase() === 'swap') {
+                            priceValue = parseFloat(price) / 100;
+                        } else {
+                            priceValue = parseFloat(price);
+                        }
+                        
+                        positions.push({
+                            price: priceValue,
+                            size: parseFloat(size)
+                        });
+                    }
+                });
+                
+                // Update backend trade object with new expression
+                const updateData = {
+                    trade_id: currentTradeId,
+                    typologies: typologies,
+                    instruments: instruments,
+                    entry_prices: positions.map(p => p.price),
+                    entry_sizes: positions.map(p => p.size),
+                    exit_prices: [],
+                    exit_sizes: []
+                };
+                
+                console.log('📤 Sending auto-update to backend:', updateData);
+                
+                fetch('/update_trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updateData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log('✅ Trade expression auto-updated successfully');
+                        
+                        // Auto-update P&L after expression change if curves exist
+                        fetch('/curves_status')
+                        .then(response => response.json())
+                        .then(curveData => {
+                            if (curveData.loaded) {
+                                console.log('✅ Curves exist, auto-recalculating P&L after expression change...');
+                                
+                                fetch('/update_realtime_pnl', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' }
+                                })
+                                .then(response => response.json())
+                                .then(pnlData => {
+                                    if (pnlData.success) {
+                                        console.log('✅ P&L recalculated after expression change');
+                                        // Update modal display with new P&L
+                                        updateModalPnLDisplay();
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('❌ Error recalculating P&L:', error);
+                                });
+                            } else {
+                                console.log('📊 No curves, skipping P&L recalculation');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('❌ Error checking curves:', error);
+                        });
+                    } else {
+                        console.error('❌ Failed to auto-update trade expression:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Network error auto-updating trade:', error);
+                });
+                
+            }, 1000); // Wait 1 second after last change before updating
+        }
+        
+        // Function to update P&L display in modal after recalculation
+        function updateModalPnLDisplay() {
+            if (!currentTradeId) return;
+            
+            console.log('🔄 Updating modal P&L display for:', currentTradeId);
+            
+            fetch(`/get_trade_details/${currentTradeId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const trade = data.trade;
+                    
+                    // Get basic trade info to determine type
+                    const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
+                    const tradeTypeSelect = basicInfoRow?.querySelector('.modal-trade-type');
+                    const tradeType = tradeTypeSelect?.value.trim() || 'swap';
+                    
+                    // Update individual position P&Ls by recalculating them
+                    const positionRows = document.querySelectorAll('#positionsTableBody tr');
+                    const instrumentInput = basicInfoRow?.querySelector('.modal-instrument');
+                    const instrument = instrumentInput?.value.trim();
+                    
+                    console.log('🔄 Recalculating P&L for each position with updated expression...');
+                    
+                    // Trigger P&L calculation for each position
+                    positionRows.forEach((row, index) => {
+                        const priceInput = row.querySelector('[data-position-price]');
+                        const sizeInput = row.querySelector('[data-position-size]');
+                        
+                        if (priceInput && sizeInput && priceInput.value && sizeInput.value) {
+                            console.log(`🔄 Recalculating P&L for position ${index + 1}`);
+                            // Trigger the P&L calculation which will update the display
+                            calculatePnL(priceInput);
+                        }
+                    });
+                    
+                    // Update total P&L display in modal
+                    const totalTradePnLElements = document.querySelectorAll('.total-pnl-display');
+                    const storedPnL = trade.stored_pnl || 0;
+                    
+                    totalTradePnLElements.forEach(element => {
+                        element.textContent = `$${storedPnL.toLocaleString('en-US', {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        })}`;
+                        element.style.color = storedPnL >= 0 ? '#51cf66' : '#ff6b6b';
+                    });
+                    
+                    console.log('✅ Modal P&L display updated with stored P&L:', storedPnL);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching updated trade details:', error);
             });
         }
         
