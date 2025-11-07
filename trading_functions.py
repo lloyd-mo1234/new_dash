@@ -48,9 +48,9 @@ class XCSwapPosition:
             for i, comp in enumerate(self.components):
                 print(f"   {i+1}. {comp['instrument']} (coeff: {comp['coefficient']})")
             
-            # Solve for component rates if not provided
-            if not self.component_rates:
-                self.component_rates = solve_component_rates(self.components, self.price)
+            # ALWAYS recalculate component rates based on current price
+            # This ensures that when price is updated, the rates are recalculated correctly
+            self.component_rates = solve_component_rates(self.components, self.price)
             
             # Create XC StandardSwap for each component using DV01-based sizing
             self.xc_swaps = []

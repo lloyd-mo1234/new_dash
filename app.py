@@ -32,7 +32,6 @@ log = logging.getLogger('werkzeug')
 clear_curves()
 
 # Don't start loading automatically - wait for web page visit
-print("🎬 Flask app ready - curve loading will start when web page is accessed")
 
 # Dark theme configuration
 DARK_THEME = {
@@ -118,31 +117,25 @@ def calculate_total_trade_pnl(trade):
         # Check if curves are available
         from loader import is_curves_loaded
         if not is_curves_loaded():
-            print(f"⚠️ Curves not loaded, cannot calculate P&L for trade {trade.trade_id}")
             return None
         
-        print(f"🧮 Calculating total P&L for trade: {trade.trade_id}")
         
         # EFFICIENCY IMPROVEMENT: Try to use existing positions first
         if (hasattr(trade, 'positions') and 
             trade.positions and 
             all(hasattr(pos, 'xc_created') and pos.xc_created for pos in trade.positions)):
             
-            print(f"✅ Using existing positions with XC swaps already created")
             total_pnl = 0.0
             
             for i, position in enumerate(trade.positions):
                 pnl_result = position.calculate_pnl()
                 position_pnl = pnl_result['pnl']
                 total_pnl += position_pnl
-                print(f"   Existing position {i} P&L: ${position_pnl:,.2f}")
             
-            print(f"✅ Total trade P&L (using existing positions): ${total_pnl:,.2f}")
             return total_pnl
         
         # EFFICIENCY IMPROVEMENT: If positions exist but XC swaps not created, create them
         elif (hasattr(trade, 'positions') and trade.positions):
-            print(f"🔧 Found existing positions but XC swaps not created, creating now...")
             total_pnl = 0.0
             positions_with_xc = 0
             
@@ -152,16 +145,13 @@ def calculate_total_trade_pnl(trade):
                     position_pnl = pnl_result['pnl']
                     total_pnl += position_pnl
                     positions_with_xc += 1
-                    print(f"   Position {i} P&L (XC created): ${position_pnl:,.2f}")
                 else:
-                    print(f"   Failed to create XC swaps for existing position {i}")
+                    continue
             
             if positions_with_xc > 0:
-                print(f"✅ Total trade P&L (created XC for existing positions): ${total_pnl:,.2f}")
                 return total_pnl
         
         # FALLBACK: Create temporary positions if no existing positions
-        print(f"🔧 No existing positions found, creating temporary positions...")
         
         # Import required functions
 
@@ -177,11 +167,11 @@ def calculate_total_trade_pnl(trade):
             instrument = trade.instrument_details[0]  # Use first instrument
             handle = f"{trade.trade_id}_position_{i}_temp_pnl_calc"
             
-            print(f"🔧 Creating temporary position {i}: price={price}, size={size}, instrument={instrument}")
+            # Use price exactly as stored (no conversion)
             
             position = XCSwapPosition(
                 handle=handle,
-                price=price,  # Already in percentage terms
+                price=price,  # Use price as-is
                 size=size,
                 instrument=instrument
             )
@@ -191,15 +181,12 @@ def calculate_total_trade_pnl(trade):
                 position_pnl = pnl_result['pnl']
                 total_pnl += position_pnl
                 position_count += 1
-                print(f"   Temporary position {i} P&L: ${position_pnl:,.2f}")
             else:
-                print(f"   Failed to create XC swaps for temporary position {i}")
+                continue
         
-        print(f"✅ Total trade P&L (temporary positions): ${total_pnl:,.2f} ({position_count} positions)")
         return total_pnl
         
     except Exception as e:
-        print(f"❌ Error calculating total trade P&L for {trade.trade_id}: {e}")
         return None
 
 @app.route('/')
@@ -392,14 +379,11 @@ def get_realtime_rates():
                         px_mid = futures_df.loc[expression, 'px_mid']
                         rates[label] = f"{px_mid:.3f}"
                         base_rates[label] = px_mid
-                        print(f"✅ Futures rate for {expression}: {px_mid}")
                     else:
                         rates[label] = '--'
                         base_rates[label] = None
-                        print(f"❌ No futures data for {expression}")
                     
                 except Exception as e:
-                    print(f"❌ Error getting futures rate for {expression}: {e}")
                     rates[label] = '--'
                     base_rates[label] = None
                 
@@ -440,7 +424,6 @@ def get_realtime_rates():
                         base_rates[label] = spread_value
                         
                     except Exception as e:
-                        print(f"Error calculating complex expression for {expression}: {e}")
                         rates[label] = '--'
                         base_rates[label] = None
                     
@@ -460,7 +443,6 @@ def get_realtime_rates():
                     base_rates[label] = latest_rate
                     
                 except Exception as e:
-                    print(f"Error getting swap rate for {expression}: {e}")
                     rates[label] = '--'
                     base_rates[label] = None
                 
@@ -507,7 +489,6 @@ def get_realtime_rates():
                         rates[label] = '--'
                         
                 except Exception as e:
-                    print(f"Error calculating mathematical expression for {label}: {expression} - {e}")
                     rates[label] = '--'
         
         return jsonify({
@@ -764,7 +745,6 @@ def update_chart():
                             ))
                     
             except Exception as e:
-                print(f"Error processing {label}: {expression} - {str(e)}")
                 continue
         
         # Check if we need a right axis
@@ -893,7 +873,6 @@ def add_trade():
     """Add a new trade to the portfolio"""
     try:
         data = request.get_json()
-        print(f"🔍 Received data: {data}")
         
         # Generate unique trade ID
         trade_id = data.get('name', f"Trade_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
@@ -902,8 +881,6 @@ def add_trade():
         typologies = data.get('typologies', [])
         instruments = data.get('instruments', [])
         
-        print(f"🔍 Typologies: {typologies} (type: {type(typologies)})")
-        print(f"🔍 Instruments: {instruments} (type: {type(instruments)})")
         
         # Create new trade with lists
         trade = Trade(
@@ -913,32 +890,25 @@ def add_trade():
         )
         
         trade.instrument_details = instruments
-        print(f"🔍 Trade created with typology: {trade.typology}, instruments: {trade.instrument_details}")
         
         # Add positions from arrays - handle both old format (entry_prices/entry_sizes) and new format (prices/sizes)
         entry_prices = data.get('entry_prices', data.get('prices', []))
         entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
-        print(f"🔍 Entry prices: {entry_prices}")
-        print(f"🔍 Entry sizes: {entry_sizes}")
         
         for price, size in zip(entry_prices, entry_sizes):
             if price and size:
                 trade.prices.append(float(price))
                 trade.sizes.append(float(size))
         
-        print(f"🔍 Final trade.prices: {trade.prices}")
-        print(f"🔍 Final trade.sizes: {trade.sizes}")
         
         # Calculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
         if total_trade_pnl is not None:
             trade.stored_pnl = total_trade_pnl
             trade.pnl_timestamp = datetime.now().isoformat()
-            print(f"💰 Calculated and stored total P&L for new trade: ${total_trade_pnl:,.2f}")
         else:
             trade.stored_pnl = 0.0
-            print(f"📊 No P&L calculated for new trade (curves not available)")
         
         # Add to portfolio (this will auto-save to file)
         portfolio.add_trade(trade)
@@ -1012,7 +982,6 @@ def update_trade():
     """Update trade positions and basic info"""
     try:
         data = request.get_json()
-        print(f"🔍 Update trade received data: {data}")
         
         trade_id = data.get('trade_id')
         
@@ -1027,34 +996,24 @@ def update_trade():
         
         if typologies:
             trade.typology = typologies
-            print(f"🔍 Updated typology to: {trade.typology}")
         
         if instruments:
             trade.instrument_details = instruments
-            print(f"🔍 Updated instruments to: {trade.instrument_details}")
         
         # Update positions - handle both old format (entry_prices/entry_sizes) and new format (prices/sizes)
         entry_prices = data.get('entry_prices', data.get('prices', []))
         entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
-        print(f"🔍 Update - Entry prices: {entry_prices}")
-        print(f"🔍 Update - Entry sizes: {entry_sizes}")
         
         trade.prices = [float(p) for p in entry_prices if p]
         trade.sizes = [float(s) for s in entry_sizes if s]
         
-        print(f"🔍 Update - Final trade.prices: {trade.prices}")
-        print(f"🔍 Update - Final trade.sizes: {trade.sizes}")
         
         # Recalculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
         if total_trade_pnl is not None:
             trade.stored_pnl = total_trade_pnl
             trade.pnl_timestamp = datetime.now().isoformat()
-            print(f"💰 Recalculated and stored total P&L for updated trade: ${total_trade_pnl:,.2f}")
-        else:
-            # Keep existing stored P&L if curves not available
-            print(f"📊 No P&L recalculated for updated trade (curves not available), keeping existing stored P&L")
         
         # Save to file after updating
         portfolio.save_to_file()
@@ -1194,7 +1153,6 @@ def initialize_positions():
 def update_realtime_pnl():
     """Update P&L for all trades using the portfolio's update_realtime_pnl method"""
     try:
-        print("🔄 Starting real-time P&L update via portfolio method...")
         
         # Call the portfolio's update_realtime_pnl method which handles everything
         pnl_result = portfolio.update_realtime_pnl()
@@ -1205,7 +1163,6 @@ def update_realtime_pnl():
         return jsonify(pnl_result)
         
     except Exception as e:
-        print(f"❌ Error in update_realtime_pnl endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/calculate_swap_pnl', methods=['POST'])
@@ -1213,7 +1170,6 @@ def calculate_swap_pnl():
     """Calculate P&L for a single position (swap or futures) - IMPROVED to use existing trade positions when possible"""
     try:
         data = request.get_json()
-        print(f"🔍 calculate_swap_pnl received data: {data}")
         
         if not data:
             return jsonify({'error': 'No JSON data received'}), 400
@@ -1226,12 +1182,10 @@ def calculate_swap_pnl():
         price_raw = data.get('price')
         size_raw = data.get('size')
         
-        print(f"🔍 Extracted values: trade_id={trade_id}, position_index={position_index}, trade_type={trade_type}, instrument={instrument}")
         
         # EFFICIENCY IMPROVEMENT: Try to use existing trade position first
         if trade_id and trade_id in portfolio.trades:
             trade = portfolio.trades[trade_id]
-            print(f"🔄 Found existing trade: {trade_id}")
             
             # Convert price/size from request for updating existing position
             try:
@@ -1249,21 +1203,50 @@ def calculate_swap_pnl():
                 
                 # UPDATE existing position with new values if provided
                 if new_price is not None and new_size is not None:
-                    print(f"🔄 Updating position {position_index} with new values: price={new_price}, size={new_size}")
                     existing_position.price = new_price
                     existing_position.size = new_size
+                    
+                    # Also update the underlying trade arrays to keep them in sync
+                    # Ensure arrays are long enough
+                    while len(trade.prices) <= position_index:
+                        trade.prices.append(0.0)
+                    while len(trade.sizes) <= position_index:
+                        trade.sizes.append(0.0)
+                    
+                    # Update the values
+                    trade.prices[position_index] = new_price
+                    trade.sizes[position_index] = new_size
+                    
+                    
                     # Mark XC swaps as outdated so they get recreated with new values
                     if hasattr(existing_position, 'xc_created'):
                         existing_position.xc_created = False
                         existing_position.xc_swaps = []
+                    
+                    # Save the updated portfolio to JSON file
+                    portfolio.save_to_file()
+                    
+                    # CRITICAL FIX: Clear positions array to force recreation with new price/size
+                    trade.positions = []
+                    
+                    # Force recreation by setting existing_position to None
+                    existing_position = None
                 
                 # Handle SWAP positions
                 if isinstance(existing_position, XCSwapPosition):
                     if hasattr(existing_position, 'xc_created') and existing_position.xc_created:
-                        print(f"✅ Reusing existing swap position {position_index} with XC swaps already created")
                         
                         # Calculate P&L using existing XC swaps
                         pnl_result = existing_position.calculate_pnl()
+                        
+                        # Update stored P&L in trade object
+                        total_trade_pnl = None
+                        if pnl_result['error'] is None:
+                            total_trade_pnl = calculate_total_trade_pnl(trade)
+                            if total_trade_pnl is not None:
+                                trade.stored_pnl = total_trade_pnl
+                                trade.pnl_timestamp = datetime.now().isoformat()
+                                portfolio.save_to_file()
                         
                         # Get component details for response
                         component_details = []
@@ -1286,12 +1269,21 @@ def calculate_swap_pnl():
                                 'handle': existing_position.handle,
                                 'instrument': existing_position.instrument,
                                 'total_components': len(existing_position.xc_swaps)
-                            }
+                            },
+                            'total_trade_pnl': total_trade_pnl  # Include updated total trade P&L
                         })
                     else:
-                        print(f"🔧 Found existing swap position {position_index} but XC swaps not created, creating now...")
                         if existing_position.create_xc_swaps():
                             pnl_result = existing_position.calculate_pnl()
+                            
+                            # Update stored P&L in trade object
+                            total_trade_pnl = None
+                            if pnl_result['error'] is None:
+                                total_trade_pnl = calculate_total_trade_pnl(trade)
+                                if total_trade_pnl is not None:
+                                    trade.stored_pnl = total_trade_pnl
+                                    trade.pnl_timestamp = datetime.now().isoformat()
+                                    portfolio.save_to_file()
                             
                             component_details = []
                             for swap_info in existing_position.xc_swaps:
@@ -1313,18 +1305,27 @@ def calculate_swap_pnl():
                                     'handle': existing_position.handle,
                                     'instrument': existing_position.instrument,
                                     'total_components': len(existing_position.xc_swaps)
-                                }
+                                },
+                                'total_trade_pnl': total_trade_pnl  # Include updated total trade P&L
                             })
                 
                 # Handle FUTURES positions
                 elif isinstance(existing_position, XCFuturesPosition):
-                    print(f"✅ Reusing existing futures position {position_index}")
                     
                     # Get futures tick data
                     futures_df = get_futures_details([existing_position.instrument])
                     
                     # Calculate P&L using futures tick data
                     pnl_result = existing_position.calculate_pnl(futures_df)
+                    
+                    # Update stored P&L in trade object
+                    total_trade_pnl = None
+                    if pnl_result['error'] is None:
+                        total_trade_pnl = calculate_total_trade_pnl(trade)
+                        if total_trade_pnl is not None:
+                            trade.stored_pnl = total_trade_pnl
+                            trade.pnl_timestamp = datetime.now().isoformat()
+                            portfolio.save_to_file()
                     
                     return jsonify({
                         'success': True,
@@ -1337,11 +1338,10 @@ def calculate_swap_pnl():
                             'price': existing_position.price,
                             'size': existing_position.size
                         },
-                        'futures_details': pnl_result.get('details', {})
+                        'futures_details': pnl_result.get('details', {}),
+                        'total_trade_pnl': total_trade_pnl  # Include updated total trade P&L
                     })
         
-        # FALLBACK: Create temporary position if no existing trade/position found
-        print(f"🔧 No existing position found, creating temporary position...")
         
         # Convert to numbers with error handling
         try:
@@ -1350,6 +1350,8 @@ def calculate_swap_pnl():
         except (ValueError, TypeError) as e:
             return jsonify({'error': f'Invalid price or size format: {e}'}), 400
         
+        # DON'T multiply by 100 - frontend sends price in correct form (4.9 for swaps, 96.40 for futures)
+        
         if not instrument or price == 0 or size == 0:
             return jsonify({
                 'error': f'Missing required parameters: instrument="{instrument}", price={price}, size={size}'
@@ -1357,7 +1359,6 @@ def calculate_swap_pnl():
         
         # Handle FUTURES
         if trade_type == 'future':
-            print(f"🔧 Creating temporary futures position...")
             
             temp_handle = f"temp_futures_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
             
@@ -1390,7 +1391,6 @@ def calculate_swap_pnl():
         
         # Handle SWAPS
         else:
-            print(f"🔧 Creating temporary swap position...")
             
             # Parse the complex expression to understand its structure
             components = parse_complex_expression(instrument)
@@ -1403,7 +1403,7 @@ def calculate_swap_pnl():
             
             position = XCSwapPosition(
                 handle=temp_handle,
-                price=price,  # Price in percentage terms
+                price=price,  # Already converted to percentage terms above
                 size=size,
                 instrument=instrument
             )
@@ -1442,7 +1442,6 @@ def calculate_swap_pnl():
                 }), 500
         
     except Exception as e:
-        print(f"❌ Error in calculate_swap_pnl: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

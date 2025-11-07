@@ -1606,18 +1606,9 @@
                 const size = sizeInput ? sizeInput.value.trim() : '';
                 
                 if (price && size) {
-                    // Convert price based on trade type - only divide by 100 for swaps
-                    let priceValue;
-                    if (typologies.length > 0 && typologies[0].toLowerCase() === 'swap') {
-                        // For swaps: convert percentage to decimal (3.15 -> 0.0315)
-                        priceValue = parseFloat(price) / 100;
-                    } else {
-                        // For futures/fx/efp: use price directly (96.40 stays 96.40)
-                        priceValue = parseFloat(price);
-                    }
-                    
+                    // Use price exactly as entered (no conversion)
                     positions.push({
-                        price: priceValue,
+                        price: parseFloat(price),
                         size: parseFloat(size)
                     });
                 }
@@ -1805,7 +1796,7 @@
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.type}</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.identifier}</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.instrument}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${(trade.avgEntry * 100).toFixed(2)}%</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.avgEntry.toFixed(2)}%</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor};" class="pnl-cell">${pnlDisplay}</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
@@ -1934,17 +1925,11 @@
                             addPosition();
                             const lastRow = positionsTableBody.lastElementChild;
                             
-                            // Convert price based on trade type for display
-                            let displayPrice = price;
-                            if (typologies.length > 0 && typologies[0].toLowerCase() === 'swap') {
-                                // For swaps: convert from decimal to percentage (0.0315 -> 3.15)
-                                displayPrice = price * 100;
-                            }
-                            
-                            lastRow.querySelector('[data-position-price]').value = displayPrice.toFixed(2);
+                            // Use price as-is (no conversion)
+                            lastRow.querySelector('[data-position-price]').value = price.toFixed(2);
                             lastRow.querySelector('[data-position-size]').value = sizes[index];
                             
-                            console.log(`✅ Loaded position ${index + 1}: price=${displayPrice}, size=${sizes[index]}`);
+                            console.log(`✅ Loaded position ${index + 1}: price=${price}, size=${sizes[index]}`);
                         }
                     });
                     
@@ -2147,15 +2132,9 @@
                     const size = sizeInput ? sizeInput.value.trim() : '';
                     
                     if (price && size) {
-                        let priceValue;
-                        if (typologies.length > 0 && typologies[0].toLowerCase() === 'swap') {
-                            priceValue = parseFloat(price) / 100;
-                        } else {
-                            priceValue = parseFloat(price);
-                        }
-                        
+                        // Use price exactly as entered (no conversion)
                         positions.push({
-                            price: priceValue,
+                            price: parseFloat(price),
                             size: parseFloat(size)
                         });
                     }
