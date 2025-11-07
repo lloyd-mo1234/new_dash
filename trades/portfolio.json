@@ -1,7 +1,7 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-07T12:29:30.446932",
-    "total_portfolio_pnl": -50625494.556794
+    "last_pnl_update": "2025-11-07T13:29:37.673974",
+    "total_portfolio_pnl": -15863561.885045283
   },
   "trades": {
     "traed 1": {
@@ -19,8 +19,8 @@
       "instrument_details": [
         "aud.10y10y"
       ],
-      "stored_pnl": -50704557.056794,
-      "pnl_timestamp": "2025-11-07T12:29:30.446932"
+      "stored_pnl": -50704186.88504528,
+      "pnl_timestamp": "2025-11-07T13:29:37.673974"
     },
     "trade 1": {
       "trade_id": "trade 1",
@@ -29,18 +29,18 @@
       ],
       "secondary_typology": null,
       "prices": [
-        112.9,
-        113.5
+        200.0,
+        200.0
       ],
       "sizes": [
-        100.0,
-        100.0
+        200.0,
+        200.0
       ],
       "instrument_details": [
         "tyz5 comdty"
       ],
-      "stored_pnl": 79062.50000000057,
-      "pnl_timestamp": "2025-11-07T12:29:30.446932"
+      "stored_pnl": 34840625.0,
+      "pnl_timestamp": "2025-11-07T13:29:37.673974"
     }
   }
 }

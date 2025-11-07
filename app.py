@@ -164,7 +164,7 @@ def calculate_total_trade_pnl(trade):
         print(f"🔧 No existing positions found, creating temporary positions...")
         
         # Import required functions
-        from trading_functions import XCSwapPosition
+
         
         total_pnl = 0.0
         position_count = 0
@@ -383,7 +383,6 @@ def get_realtime_rates():
             # Handle futures expressions
             if trade_type == 'future':
                 try:
-                    from trading_functions import get_futures_details
                     
                     # Get futures details using Bloomberg BDP
                     futures_df = get_futures_details([expression])
@@ -412,8 +411,7 @@ def get_realtime_rates():
                 if any(op in expression for op in ['+', '-', '*', '/']) and re.search(r'[a-z]+\.\d+[ymd]', expression.lower()):
                     # This is a complex expression like "aud.5y5y-eur.5y5y"
                     try:
-                        from trading_functions import parse_complex_expression, solve_component_rates
-                        
+                       
                         # Parse the complex expression
                         components = parse_complex_expression(expression)
                         
@@ -1235,11 +1233,29 @@ def calculate_swap_pnl():
             trade = portfolio.trades[trade_id]
             print(f"🔄 Found existing trade: {trade_id}")
             
+            # Convert price/size from request for updating existing position
+            try:
+                new_price = float(price_raw) if price_raw is not None else None
+                new_size = float(size_raw) if size_raw is not None else None
+            except (ValueError, TypeError):
+                new_price = None
+                new_size = None
+            
             # Check if positions are already created
             if (hasattr(trade, 'positions') and 
                 len(trade.positions) > position_index):
                 
                 existing_position = trade.positions[position_index]
+                
+                # UPDATE existing position with new values if provided
+                if new_price is not None and new_size is not None:
+                    print(f"🔄 Updating position {position_index} with new values: price={new_price}, size={new_size}")
+                    existing_position.price = new_price
+                    existing_position.size = new_size
+                    # Mark XC swaps as outdated so they get recreated with new values
+                    if hasattr(existing_position, 'xc_created'):
+                        existing_position.xc_created = False
+                        existing_position.xc_swaps = []
                 
                 # Handle SWAP positions
                 if isinstance(existing_position, XCSwapPosition):
@@ -1305,7 +1321,6 @@ def calculate_swap_pnl():
                     print(f"✅ Reusing existing futures position {position_index}")
                     
                     # Get futures tick data
-                    from trading_functions import get_futures_details
                     futures_df = get_futures_details([existing_position.instrument])
                     
                     # Calculate P&L using futures tick data
@@ -1343,7 +1358,6 @@ def calculate_swap_pnl():
         # Handle FUTURES
         if trade_type == 'future':
             print(f"🔧 Creating temporary futures position...")
-            from trading_functions import XCFuturesPosition, get_futures_details
             
             temp_handle = f"temp_futures_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
             
@@ -1377,7 +1391,6 @@ def calculate_swap_pnl():
         # Handle SWAPS
         else:
             print(f"🔧 Creating temporary swap position...")
-            from trading_functions import XCSwapPosition, parse_complex_expression
             
             # Parse the complex expression to understand its structure
             components = parse_complex_expression(instrument)

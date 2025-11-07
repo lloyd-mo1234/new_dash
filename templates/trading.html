@@ -1190,6 +1190,7 @@
         // New popup-based trading system
         let storedTrades = [];
         let positionCounter = 0;
+        let cachedFuturesData = null; // Cache futures tick data to avoid repeated API calls
         
         // Open popup for new trade entry
         function addNewRow() {
@@ -1333,6 +1334,52 @@
             `;
             
             tbody.appendChild(row);
+        }
+        
+        function refreshFuturesDataIfNeeded() {
+            // Check if this is a futures trade
+            const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
+            if (!basicInfoRow) return;
+            
+            const tradeTypeSelect = basicInfoRow.querySelector('.modal-trade-type');
+            const instrumentInput = basicInfoRow.querySelector('.modal-instrument');
+            
+            if (!tradeTypeSelect || !instrumentInput) return;
+            
+            const tradeType = tradeTypeSelect.value.trim();
+            const instrument = instrumentInput.value.trim();
+            
+            if (tradeType === 'future' && instrument) {
+                console.log('🔄 Fetching fresh futures data for new position:', instrument);
+                
+                // Call backend to get futures details
+                fetch('/get_realtime_rates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        expressions: [{
+                            label: 'cache',
+                            expression: instrument,
+                            type: 'future'
+                        }]
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Store this as our cached data for subsequent P&L calculations
+                        cachedFuturesData = {
+                            instrument: instrument,
+                            timestamp: new Date().toISOString(),
+                            data: data
+                        };
+                        console.log('✅ Futures data cached:', cachedFuturesData);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error fetching futures data:', error);
+                });
+            }
         }
         
         function getAvailableInstruments() {
@@ -2296,28 +2343,93 @@
                 currentTradeId, positionIndex  // NEW: Include trade info for position reuse
             });
             
-            // Only calculate P&L for swaps with valid data
-            if (tradeType === 'swap' && instrument && !isNaN(price) && !isNaN(size)) {
+            // Calculate P&L for swaps and futures with valid data
+            if ((tradeType === 'swap' || tradeType === 'future') && instrument && !isNaN(price) && !isNaN(size)) {
                 pnlDisplay.textContent = 'Calculating...';
                 pnlDisplay.style.color = '#cccccc';
                 
-                // First check if curves are loaded
-                fetch('/curves_status')
-                .then(response => response.json())
-                .then(statusData => {
-                    console.log('📊 Curves status for P&L:', statusData);
+                // For swaps, check if curves are loaded first
+                if (tradeType === 'swap') {
+                    fetch('/curves_status')
+                    .then(response => response.json())
+                    .then(statusData => {
+                        console.log('📊 Curves status for swap P&L:', statusData);
+                        
+                        if (!statusData.loaded) {
+                            console.log('⚠️ Curves not loaded, cannot calculate swap P&L');
+                            pnlDisplay.textContent = 'No curves';
+                            pnlDisplay.style.color = '#ff9f43';
+                            return;
+                        }
+                        
+                        // Curves are loaded, proceed with swap P&L calculation
+                        console.log('✅ Curves loaded, calculating swap P&L for:', instrument);
+                        
+                        const requestBody = {
+                            tradeType: tradeType,
+                            instrument: instrument,
+                            price: price,
+                            size: size
+                        };
+                        
+                        if (currentTradeId) {
+                            requestBody.trade_id = currentTradeId;
+                            requestBody.position_index = positionIndex;
+                        }
+                        
+                        return fetch('/calculate_swap_pnl', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(requestBody)
+                        });
+                    })
+                    .then(response => {
+                        if (!response) return;
+                        console.log('📡 Swap P&L response status:', response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (!data) return;
+                        
+                        console.log('📊 Swap P&L response:', data);
+                        
+                        if (data.success && data.pnl !== undefined) {
+                            const pnl = data.pnl;
+                            pnlDisplay.textContent = `$${pnl.toLocaleString('en-US', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
+                            })}`;
+                            
+                            if (pnl > 0) {
+                                pnlDisplay.style.color = '#51cf66';
+                            } else if (pnl < 0) {
+                                pnlDisplay.style.color = '#ff6b6b';
+                            } else {
+                                pnlDisplay.style.color = '#cccccc';
+                            }
+                            
+                            console.log(`✅ Swap P&L calculated: ${pnl}`);
+                            updateTotalTradePnL();
+                        } else {
+                            pnlDisplay.textContent = 'Error';
+                            pnlDisplay.style.color = '#ff6b6b';
+                            console.error('❌ Swap P&L error:', data.error);
+                            updateTotalTradePnL();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Swap P&L network error:', error);
+                        pnlDisplay.textContent = 'Error';
+                        pnlDisplay.style.color = '#ff6b6b';
+                        updateTotalTradePnL();
+                    });
                     
-                    if (!statusData.loaded) {
-                        console.log('⚠️ Curves not loaded, cannot calculate P&L');
-                        pnlDisplay.textContent = 'No curves';
-                        pnlDisplay.style.color = '#ff9f43';
-                        return;
-                    }
+                } else if (tradeType === 'future') {
+                    // For futures, calculate P&L directly (no curves required)
+                    console.log('🔄 Calculating futures P&L for:', instrument);
                     
-                    // Curves are loaded, proceed with P&L calculation
-                    console.log('✅ Curves loaded, calculating P&L for:', instrument);
-                    
-                    // EFFICIENCY IMPROVEMENT: Include trade_id and position_index for backend optimization
                     const requestBody = {
                         tradeType: tradeType,
                         instrument: instrument,
@@ -2325,83 +2437,61 @@
                         size: size
                     };
                     
-                    // Add trade info if available for position reuse
                     if (currentTradeId) {
                         requestBody.trade_id = currentTradeId;
                         requestBody.position_index = positionIndex;
-                        console.log('🔄 Including trade info for position reuse:', {
-                            trade_id: currentTradeId,
-                            position_index: positionIndex
-                        });
                     }
                     
-                    return fetch('/calculate_swap_pnl', {
+                    fetch('/calculate_swap_pnl', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify(requestBody)
-                    });
-                })
-                .then(response => {
-                    if (!response) return; // Curves not loaded case
-                    
-                    console.log('📡 P&L calculation response status:', response.status);
-                    return response.json();
-                })
-                .then(data => {
-                    if (!data) return; // Curves not loaded case
-                    
-                    console.log('📊 P&L response:', data);
-                    
-                    if (data.success && data.pnl !== undefined) {
-                        const pnl = data.pnl;
-                        pnlDisplay.textContent = `$${pnl.toLocaleString('en-US', {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 0
-                        })}`;
+                    })
+                    .then(response => {
+                        console.log('📡 Futures P&L response status:', response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('📊 Futures P&L response:', data);
                         
-                        // Color code the P&L
-                        if (pnl > 0) {
-                            pnlDisplay.style.color = '#51cf66'; // Green for profit
-                        } else if (pnl < 0) {
-                            pnlDisplay.style.color = '#ff6b6b'; // Red for loss
+                        if (data.success && data.pnl !== undefined) {
+                            const pnl = data.pnl;
+                            pnlDisplay.textContent = `$${pnl.toLocaleString('en-US', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
+                            })}`;
+                            
+                            if (pnl > 0) {
+                                pnlDisplay.style.color = '#51cf66';
+                            } else if (pnl < 0) {
+                                pnlDisplay.style.color = '#ff6b6b';
+                            } else {
+                                pnlDisplay.style.color = '#cccccc';
+                            }
+                            
+                            console.log(`✅ Futures P&L calculated: ${pnl}`);
+                            updateTotalTradePnL();
                         } else {
-                            pnlDisplay.style.color = '#cccccc'; // Gray for zero
+                            pnlDisplay.textContent = 'Error';
+                            pnlDisplay.style.color = '#ff6b6b';
+                            console.error('❌ Futures P&L error:', data.error);
+                            updateTotalTradePnL();
                         }
-                        
-                        // Log efficiency method used
-                        if (data.method) {
-                            console.log(`✅ P&L calculated using method: ${data.method}, value: ${pnl}`);
-                        } else {
-                            console.log('✅ P&L calculated:', pnl);
-                        }
-                        
-                        // Update total trade P&L after individual position calculation
-                        updateTotalTradePnL();
-                    } else {
+                    })
+                    .catch(error => {
+                        console.error('❌ Futures P&L network error:', error);
                         pnlDisplay.textContent = 'Error';
                         pnlDisplay.style.color = '#ff6b6b';
-                        console.error('❌ P&L calculation error:', data.error);
-                        
-                        // Update total trade P&L even if this position failed
                         updateTotalTradePnL();
-                    }
-                })
-                .catch(error => {
-                    console.error('❌ P&L calculation network error:', error);
-                    pnlDisplay.textContent = 'Error';
-                    pnlDisplay.style.color = '#ff6b6b';
-                    
-                    // Update total trade P&L even if this position failed
-                    updateTotalTradePnL();
-                });
+                    });
+                }
+                
             } else {
                 pnlDisplay.textContent = '--';
                 pnlDisplay.style.color = '#cccccc';
                 console.log('🔍 Not calculating P&L - missing or invalid data');
-                
-                // Update total trade P&L
                 updateTotalTradePnL();
             }
         }
