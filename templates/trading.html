@@ -1871,13 +1871,28 @@
                     const positionsTableBody = document.getElementById('positionsTableBody');
                     positionsTableBody.innerHTML = '';
                     
-                    // Add entry positions (all positions are now just positions without type)
-                    (trade.entry_prices || []).forEach((price, index) => {
-                        if (trade.entry_sizes && trade.entry_sizes[index]) {
+                    // Load positions from trade.prices and trade.sizes
+                    const prices = trade.prices || [];
+                    const sizes = trade.sizes || [];
+                    
+                    console.log('📋 Loading positions:', { prices, sizes });
+                    
+                    prices.forEach((price, index) => {
+                        if (sizes[index] !== undefined) {
                             addPosition();
                             const lastRow = positionsTableBody.lastElementChild;
-                            lastRow.querySelector('[data-position-price]').value = price;
-                            lastRow.querySelector('[data-position-size]').value = trade.entry_sizes[index];
+                            
+                            // Convert price based on trade type for display
+                            let displayPrice = price;
+                            if (typologies.length > 0 && typologies[0].toLowerCase() === 'swap') {
+                                // For swaps: convert from decimal to percentage (0.0315 -> 3.15)
+                                displayPrice = price * 100;
+                            }
+                            
+                            lastRow.querySelector('[data-position-price]').value = displayPrice.toFixed(2);
+                            lastRow.querySelector('[data-position-size]').value = sizes[index];
+                            
+                            console.log(`✅ Loaded position ${index + 1}: price=${displayPrice}, size=${sizes[index]}`);
                         }
                     });
                     
@@ -2236,7 +2251,7 @@
         
         // Removed formatting functions - inputs now display exactly what user enters
         
-        // P&L calculation function
+        // P&L calculation function - IMPROVED to use existing positions when possible
         function calculatePnL(input) {
             console.log('🧮 Calculating P&L for position...');
             
@@ -2272,8 +2287,13 @@
             const price = parseFloat(priceInput.value);
             const size = parseFloat(sizeInput.value);
             
+            // EFFICIENCY IMPROVEMENT: Get position index for reusing existing positions
+            const positionRows = Array.from(document.querySelectorAll('#positionsTableBody tr'));
+            const positionIndex = positionRows.indexOf(row);
+            
             console.log('📊 P&L calculation inputs:', {
-                tradeType, instrument, price, size
+                tradeType, instrument, price, size, 
+                currentTradeId, positionIndex  // NEW: Include trade info for position reuse
             });
             
             // Only calculate P&L for swaps with valid data
@@ -2297,17 +2317,30 @@
                     // Curves are loaded, proceed with P&L calculation
                     console.log('✅ Curves loaded, calculating P&L for:', instrument);
                     
+                    // EFFICIENCY IMPROVEMENT: Include trade_id and position_index for backend optimization
+                    const requestBody = {
+                        tradeType: tradeType,
+                        instrument: instrument,
+                        price: price,
+                        size: size
+                    };
+                    
+                    // Add trade info if available for position reuse
+                    if (currentTradeId) {
+                        requestBody.trade_id = currentTradeId;
+                        requestBody.position_index = positionIndex;
+                        console.log('🔄 Including trade info for position reuse:', {
+                            trade_id: currentTradeId,
+                            position_index: positionIndex
+                        });
+                    }
+                    
                     return fetch('/calculate_swap_pnl', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({
-                            tradeType: tradeType,
-                            instrument: instrument,
-                            price: price,
-                            size: size
-                        })
+                        body: JSON.stringify(requestBody)
                     });
                 })
                 .then(response => {
@@ -2337,7 +2370,12 @@
                             pnlDisplay.style.color = '#cccccc'; // Gray for zero
                         }
                         
-                        console.log('✅ P&L calculated:', pnl);
+                        // Log efficiency method used
+                        if (data.method) {
+                            console.log(`✅ P&L calculated using method: ${data.method}, value: ${pnl}`);
+                        } else {
+                            console.log('✅ P&L calculated:', pnl);
+                        }
                         
                         // Update total trade P&L after individual position calculation
                         updateTotalTradePnL();

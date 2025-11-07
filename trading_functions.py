@@ -10,30 +10,8 @@ import json
 import os
 import re
 import xbbg.blp as blp
+from cba.analytics import xcurves as xc
 
-# Import XC functions for swap creation and P&L calculation
-try:
-    from cba.analytics import xcurves as xc
-    XC_AVAILABLE = True
-    print("✅ XC package imported successfully")
-except ImportError:
-    XC_AVAILABLE = False
-    print("❌ XC package not available - using mock functions")
-    
-    # Mock XC functions for development/testing
-    class MockXC:
-        @staticmethod
-        def StandardSwap(*args, **kwargs):
-            print(f"🔧 Mock StandardSwap called with args: {args}, kwargs: {kwargs}")
-            return True
-            
-        @staticmethod
-        def PresentValue(curve_handle, product_handle):
-            print(f"🔧 Mock PresentValue called for curve: {curve_handle}, product: {product_handle}")
-            # Return a mock P&L value
-            return np.random.normal(10000, 5000)
-    
-    xc = MockXC()
 
 class XCSwapPosition:
     """Represents a complex XC swap position that can contain multiple StandardSwap objects"""
@@ -703,15 +681,6 @@ class Portfolio:
         
         trade = self.trades[trade_id]
         
-        # Get live price
-        live_price_result = get_instrument_live_price(
-            trade.typology, 
-            trade.instrument_details, 
-            trade.secondary_typology
-        )
-        
-        live_price = live_price_result.get("price")
-        
         # Use stored P&L if available, otherwise calculate on-the-fly
         stored_pnl = getattr(trade, 'stored_pnl', None)
         pnl_timestamp = getattr(trade, 'pnl_timestamp', None)
@@ -727,8 +696,8 @@ class Portfolio:
             }
             print(f"📊 Using stored P&L for {trade_id}: ${stored_pnl:,.2f} (timestamp: {pnl_timestamp})")
         else:
-            # Fallback to calculating P&L on-the-fly
-            pnl = trade.calculate_pnl(live_price)
+            # Fallback to calculating P&L on-the-fly (without live price)
+            pnl = trade.calculate_pnl()
             pnl["method"] = "calculated_on_demand"
             print(f"🧮 Calculated P&L on-demand for {trade_id}: ${pnl.get('total_pnl', 0):,.2f}")
         
@@ -736,7 +705,8 @@ class Portfolio:
             "trade_id": trade.trade_id,
             "typology": trade.typology,
             "instrument_details": trade.instrument_details,
-            "live_price": live_price,
+            "prices": trade.prices,  # Add prices array
+            "sizes": trade.sizes,    # Add sizes array
             "pnl": pnl
         }
 

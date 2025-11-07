@@ -113,7 +113,7 @@ def filter_data_by_range(df, range_filter):
     return df[df['Date'] >= start_date]
 
 def calculate_total_trade_pnl(trade):
-    """Calculate total P&L for a trade by summing all position P&Ls"""
+    """Calculate total P&L for a trade - IMPROVED to use existing positions when available"""
     try:
         # Check if curves are available
         from loader import is_curves_loaded
@@ -121,10 +121,50 @@ def calculate_total_trade_pnl(trade):
             print(f"⚠️ Curves not loaded, cannot calculate P&L for trade {trade.trade_id}")
             return None
         
+        print(f"🧮 Calculating total P&L for trade: {trade.trade_id}")
+        
+        # EFFICIENCY IMPROVEMENT: Try to use existing positions first
+        if (hasattr(trade, 'positions') and 
+            trade.positions and 
+            all(hasattr(pos, 'xc_created') and pos.xc_created for pos in trade.positions)):
+            
+            print(f"✅ Using existing positions with XC swaps already created")
+            total_pnl = 0.0
+            
+            for i, position in enumerate(trade.positions):
+                pnl_result = position.calculate_pnl()
+                position_pnl = pnl_result['pnl']
+                total_pnl += position_pnl
+                print(f"   Existing position {i} P&L: ${position_pnl:,.2f}")
+            
+            print(f"✅ Total trade P&L (using existing positions): ${total_pnl:,.2f}")
+            return total_pnl
+        
+        # EFFICIENCY IMPROVEMENT: If positions exist but XC swaps not created, create them
+        elif (hasattr(trade, 'positions') and trade.positions):
+            print(f"🔧 Found existing positions but XC swaps not created, creating now...")
+            total_pnl = 0.0
+            positions_with_xc = 0
+            
+            for i, position in enumerate(trade.positions):
+                if position.create_xc_swaps():
+                    pnl_result = position.calculate_pnl()
+                    position_pnl = pnl_result['pnl']
+                    total_pnl += position_pnl
+                    positions_with_xc += 1
+                    print(f"   Position {i} P&L (XC created): ${position_pnl:,.2f}")
+                else:
+                    print(f"   Failed to create XC swaps for existing position {i}")
+            
+            if positions_with_xc > 0:
+                print(f"✅ Total trade P&L (created XC for existing positions): ${total_pnl:,.2f}")
+                return total_pnl
+        
+        # FALLBACK: Create temporary positions if no existing positions
+        print(f"🔧 No existing positions found, creating temporary positions...")
+        
         # Import required functions
         from trading_functions import XCSwapPosition
-        
-        print(f"🧮 Calculating total P&L for trade: {trade.trade_id}")
         
         total_pnl = 0.0
         position_count = 0
@@ -135,9 +175,9 @@ def calculate_total_trade_pnl(trade):
                 continue
                 
             instrument = trade.instrument_details[0]  # Use first instrument
-            handle = f"{trade.trade_id}_position_{i}_pnl_calc"
+            handle = f"{trade.trade_id}_position_{i}_temp_pnl_calc"
             
-            print(f"🔧 Calculating position {i}: price={price}, size={size}, instrument={instrument}")
+            print(f"🔧 Creating temporary position {i}: price={price}, size={size}, instrument={instrument}")
             
             position = XCSwapPosition(
                 handle=handle,
@@ -151,11 +191,11 @@ def calculate_total_trade_pnl(trade):
                 position_pnl = pnl_result['pnl']
                 total_pnl += position_pnl
                 position_count += 1
-                print(f"   Position {i} P&L: ${position_pnl:,.2f}")
+                print(f"   Temporary position {i} P&L: ${position_pnl:,.2f}")
             else:
-                print(f"   Failed to create XC swaps for position {i}")
+                print(f"   Failed to create XC swaps for temporary position {i}")
         
-        print(f"✅ Total trade P&L for {trade.trade_id}: ${total_pnl:,.2f} ({position_count} positions)")
+        print(f"✅ Total trade P&L (temporary positions): ${total_pnl:,.2f} ({position_count} positions)")
         return total_pnl
         
     except Exception as e:
@@ -877,14 +917,20 @@ def add_trade():
         trade.instrument_details = instruments
         print(f"🔍 Trade created with typology: {trade.typology}, instruments: {trade.instrument_details}")
         
-        # Add positions from arrays
-        prices = data.get('prices', [])
-        sizes = data.get('sizes', [])
+        # Add positions from arrays - handle both old format (entry_prices/entry_sizes) and new format (prices/sizes)
+        entry_prices = data.get('entry_prices', data.get('prices', []))
+        entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
-        for price, size in zip(prices, sizes):
+        print(f"🔍 Entry prices: {entry_prices}")
+        print(f"🔍 Entry sizes: {entry_sizes}")
+        
+        for price, size in zip(entry_prices, entry_sizes):
             if price and size:
                 trade.prices.append(float(price))
                 trade.sizes.append(float(size))
+        
+        print(f"🔍 Final trade.prices: {trade.prices}")
+        print(f"🔍 Final trade.sizes: {trade.sizes}")
         
         # Calculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -989,9 +1035,18 @@ def update_trade():
             trade.instrument_details = instruments
             print(f"🔍 Updated instruments to: {trade.instrument_details}")
         
-        # Update positions
-        trade.prices = data.get('prices', [])
-        trade.sizes = data.get('sizes', [])
+        # Update positions - handle both old format (entry_prices/entry_sizes) and new format (prices/sizes)
+        entry_prices = data.get('entry_prices', data.get('prices', []))
+        entry_sizes = data.get('entry_sizes', data.get('sizes', []))
+        
+        print(f"🔍 Update - Entry prices: {entry_prices}")
+        print(f"🔍 Update - Entry sizes: {entry_sizes}")
+        
+        trade.prices = [float(p) for p in entry_prices if p]
+        trade.sizes = [float(s) for s in entry_sizes if s]
+        
+        print(f"🔍 Update - Final trade.prices: {trade.prices}")
+        print(f"🔍 Update - Final trade.sizes: {trade.sizes}")
         
         # Recalculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1059,43 +1114,6 @@ def get_portfolio_pnl_history():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/run_trade_regression', methods=['POST'])
-def run_trade_regression():
-    """Run regression analysis for trading instruments"""
-    try:
-        data = request.get_json()
-        y_instrument = data.get('y_instrument')
-        x_instruments = data.get('x_instruments', [])
-        
-        if not y_instrument:
-            return jsonify({'error': 'Y instrument is required'}), 400
-        
-        if not x_instruments:
-            return jsonify({'error': 'At least one X instrument is required'}), 400
-        
-        results = {}
-        
-        # Run regression for each X instrument with different lookback periods
-        for x_instrument in x_instruments:
-            results[x_instrument] = {}
-            
-            for months in [1, 2, 3]:
-                regression_data = get_regression_data_for_instruments(
-                    y_instrument, [x_instrument], months
-                )
-                
-                if 'error' in regression_data:
-                    results[x_instrument][months] = {'error': regression_data['error']}
-                else:
-                    results[x_instrument][months] = regression_data['results'].get(x_instrument, {})
-        
-        return jsonify({
-            'success': True,
-            'results': results
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/get_instrument_price', methods=['POST'])
 def get_instrument_price():
@@ -1194,114 +1212,221 @@ def update_realtime_pnl():
 
 @app.route('/calculate_swap_pnl', methods=['POST'])
 def calculate_swap_pnl():
-    """Calculate P&L for a single swap position (used by frontend popup)"""
+    """Calculate P&L for a single position (swap or futures) - IMPROVED to use existing trade positions when possible"""
     try:
         data = request.get_json()
-        print(f"🔍 calculate_swap_pnl received raw data: {data}")
-        print(f"� Request content type: {request.content_type}")
-        print(f"🔍 Request data: {request.data}")
+        print(f"🔍 calculate_swap_pnl received data: {data}")
         
         if not data:
             return jsonify({'error': 'No JSON data received'}), 400
         
-        # Extract position details with detailed logging
-        trade_type = data.get('tradeType', 'swap')
+        # Extract position details
+        trade_id = data.get('trade_id')  # Accept trade_id to reuse existing positions
+        position_index = data.get('position_index', 0)  # Which position in the trade
+        trade_type = data.get('tradeType', 'swap').lower()
         instrument = data.get('instrument')
         price_raw = data.get('price')
         size_raw = data.get('size')
         
-        print(f"� Extracted values: tradeType={trade_type}, instrument={instrument}, price={price_raw}, size={size_raw}")
+        print(f"🔍 Extracted values: trade_id={trade_id}, position_index={position_index}, trade_type={trade_type}, instrument={instrument}")
+        
+        # EFFICIENCY IMPROVEMENT: Try to use existing trade position first
+        if trade_id and trade_id in portfolio.trades:
+            trade = portfolio.trades[trade_id]
+            print(f"🔄 Found existing trade: {trade_id}")
+            
+            # Check if positions are already created
+            if (hasattr(trade, 'positions') and 
+                len(trade.positions) > position_index):
+                
+                existing_position = trade.positions[position_index]
+                
+                # Handle SWAP positions
+                if isinstance(existing_position, XCSwapPosition):
+                    if hasattr(existing_position, 'xc_created') and existing_position.xc_created:
+                        print(f"✅ Reusing existing swap position {position_index} with XC swaps already created")
+                        
+                        # Calculate P&L using existing XC swaps
+                        pnl_result = existing_position.calculate_pnl()
+                        
+                        # Get component details for response
+                        component_details = []
+                        for swap_info in existing_position.xc_swaps:
+                            component_details.append({
+                                'instrument': swap_info['instrument'],
+                                'coefficient': swap_info['coefficient'],
+                                'notional': swap_info['notional'],
+                                'rate': swap_info['rate']
+                            })
+                        
+                        return jsonify({
+                            'success': True,
+                            'pnl': pnl_result['pnl'],
+                            'error': pnl_result['error'],
+                            'components': component_details,
+                            'component_pnls': pnl_result.get('components', []),
+                            'method': 'reused_existing_swap_position',
+                            'position_details': {
+                                'handle': existing_position.handle,
+                                'instrument': existing_position.instrument,
+                                'total_components': len(existing_position.xc_swaps)
+                            }
+                        })
+                    else:
+                        print(f"🔧 Found existing swap position {position_index} but XC swaps not created, creating now...")
+                        if existing_position.create_xc_swaps():
+                            pnl_result = existing_position.calculate_pnl()
+                            
+                            component_details = []
+                            for swap_info in existing_position.xc_swaps:
+                                component_details.append({
+                                    'instrument': swap_info['instrument'],
+                                    'coefficient': swap_info['coefficient'],
+                                    'notional': swap_info['notional'],
+                                    'rate': swap_info['rate']
+                                })
+                            
+                            return jsonify({
+                                'success': True,
+                                'pnl': pnl_result['pnl'],
+                                'error': pnl_result['error'],
+                                'components': component_details,
+                                'component_pnls': pnl_result.get('components', []),
+                                'method': 'created_xc_swaps_for_existing_position',
+                                'position_details': {
+                                    'handle': existing_position.handle,
+                                    'instrument': existing_position.instrument,
+                                    'total_components': len(existing_position.xc_swaps)
+                                }
+                            })
+                
+                # Handle FUTURES positions
+                elif isinstance(existing_position, XCFuturesPosition):
+                    print(f"✅ Reusing existing futures position {position_index}")
+                    
+                    # Get futures tick data
+                    from trading_functions import get_futures_details
+                    futures_df = get_futures_details([existing_position.instrument])
+                    
+                    # Calculate P&L using futures tick data
+                    pnl_result = existing_position.calculate_pnl(futures_df)
+                    
+                    return jsonify({
+                        'success': True,
+                        'pnl': pnl_result['pnl'],
+                        'error': pnl_result['error'],
+                        'method': 'reused_existing_futures_position',
+                        'position_details': {
+                            'handle': existing_position.handle,
+                            'instrument': existing_position.instrument,
+                            'price': existing_position.price,
+                            'size': existing_position.size
+                        },
+                        'futures_details': pnl_result.get('details', {})
+                    })
+        
+        # FALLBACK: Create temporary position if no existing trade/position found
+        print(f"🔧 No existing position found, creating temporary position...")
         
         # Convert to numbers with error handling
         try:
             price = float(price_raw) if price_raw is not None else 0
             size = float(size_raw) if size_raw is not None else 0
         except (ValueError, TypeError) as e:
-            return jsonify({'error': f'Invalid price or size format: {e}. Price was: "{price_raw}", Size was: "{size_raw}"'}), 400
-        
-        print(f"🔍 Converted values: price={price}, size={size}")
+            return jsonify({'error': f'Invalid price or size format: {e}'}), 400
         
         if not instrument or price == 0 or size == 0:
             return jsonify({
                 'error': f'Missing required parameters: instrument="{instrument}", price={price}, size={size}'
             }), 400
         
-        # Import required functions
-        from trading_functions import XCSwapPosition, parse_complex_expression
-        
-        # Parse the complex expression to understand its structure
-        components = parse_complex_expression(instrument)
-        
-        print(f"🔧 Parsed complex expression: {instrument}")
-        print(f"   Found {len(components)} components:")
-        for i, comp in enumerate(components):
-            print(f"   {i+1}. {comp['instrument']} (coeff: {comp['coefficient']}, template: {comp['template']})")
-        
-        if not components:
-            return jsonify({'error': f'Could not parse instrument expression: {instrument}'}), 400
-        
-        # Create temporary XC position for P&L calculation using new constructor
-        temp_handle = f"temp_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-        
-        # Use price directly as percentage (0.302 -> 0.302%)
-        # No conversion needed - input is already in percentage terms
-        price_percentage = price
-        
-        print(f"🔧 Position parameters:")
-        print(f"   handle: {temp_handle}")
-        print(f"   price (input): {price}%")
-        print(f"   price (percentage): {price_percentage}%")
-        print(f"   size: {size} million")
-        print(f"   instrument: {instrument}")
-        
-        position = XCSwapPosition(
-            handle=temp_handle,
-            price=price_percentage,  # This is the spread price in percentage terms
-            size=size,
-            instrument=instrument  # Complex expression like "aud.5y5y.10y10y"
-        )
-        
-        # Create XC swaps and calculate P&L (curve handle auto-generated)
-        if position.create_xc_swaps():  
-            pnl_result = position.calculate_pnl()
+        # Handle FUTURES
+        if trade_type == 'future':
+            print(f"🔧 Creating temporary futures position...")
+            from trading_functions import XCFuturesPosition, get_futures_details
             
-            # Get component details for response
-            component_details = []
-            for swap_info in position.xc_swaps:
-                component_details.append({
-                    'instrument': swap_info['instrument'],
-                    'coefficient': swap_info['coefficient'],
-                    'notional': swap_info['notional'],
-                    'rate': swap_info['rate']
-                })
+            temp_handle = f"temp_futures_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
             
-            print(f"🔍 About to return successful P&L response:")
-            print(f"   success: True")
-            print(f"   pnl: {pnl_result['pnl']}")
-            print(f"   error: {pnl_result['error']}")
-            print(f"   components count: {len(component_details)}")
+            position = XCFuturesPosition(
+                handle=temp_handle,
+                price=price,
+                size=size,
+                instrument=instrument
+            )
             
-            response_data = {
+            # Get futures tick data
+            futures_df = get_futures_details([instrument])
+            
+            # Calculate P&L
+            pnl_result = position.calculate_pnl(futures_df)
+            
+            return jsonify({
                 'success': True,
                 'pnl': pnl_result['pnl'],
                 'error': pnl_result['error'],
-                'components': component_details,
-                'component_pnls': pnl_result.get('components', []),
+                'method': 'temporary_futures_position_created',
                 'position_details': {
                     'handle': temp_handle,
                     'instrument': instrument,
-                    'total_components': len(position.xc_swaps),
-                    'price_percentage': price_percentage
-                }
-            }
-            
-            print(f"🔍 Full response data: {response_data}")
-            return jsonify(response_data)
+                    'price': price,
+                    'size': size
+                },
+                'futures_details': pnl_result.get('details', {})
+            })
+        
+        # Handle SWAPS
         else:
-            return jsonify({
-                'success': False,
-                'error': f'Failed to create XC swaps for {instrument}'
-            }), 500
+            print(f"🔧 Creating temporary swap position...")
+            from trading_functions import XCSwapPosition, parse_complex_expression
+            
+            # Parse the complex expression to understand its structure
+            components = parse_complex_expression(instrument)
+            
+            if not components:
+                return jsonify({'error': f'Could not parse instrument expression: {instrument}'}), 400
+            
+            # Create temporary XC position for P&L calculation
+            temp_handle = f"temp_swap_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+            
+            position = XCSwapPosition(
+                handle=temp_handle,
+                price=price,  # Price in percentage terms
+                size=size,
+                instrument=instrument
+            )
+            
+            # Create XC swaps and calculate P&L
+            if position.create_xc_swaps():  
+                pnl_result = position.calculate_pnl()
+                
+                # Get component details for response
+                component_details = []
+                for swap_info in position.xc_swaps:
+                    component_details.append({
+                        'instrument': swap_info['instrument'],
+                        'coefficient': swap_info['coefficient'],
+                        'notional': swap_info['notional'],
+                        'rate': swap_info['rate']
+                    })
+                
+                return jsonify({
+                    'success': True,
+                    'pnl': pnl_result['pnl'],
+                    'error': pnl_result['error'],
+                    'components': component_details,
+                    'component_pnls': pnl_result.get('components', []),
+                    'method': 'temporary_swap_position_created',
+                    'position_details': {
+                        'handle': temp_handle,
+                        'instrument': instrument,
+                        'total_components': len(position.xc_swaps)
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to create XC swaps for {instrument}'
+                }), 500
         
     except Exception as e:
         print(f"❌ Error in calculate_swap_pnl: {e}")
