@@ -223,15 +223,20 @@ class XCFuturesPosition:
     """Represents a futures position for P&L calculation"""
     
     def __init__(self, handle: str, price: float, size: float, 
-                 instrument: str):
+                 instrument: str, component_rates: Dict[str, float] = None):
         self.handle = handle
-        self.price = price  # Entry price
+        self.price = price  # Entry price (can be spread price for expressions)
         self.size = size    # Number of lots
-        self.instrument = instrument  # Futures instrument name
+        self.instrument = instrument  # Futures instrument name or expression
         self.last_pnl = 0.0
         
+        # New attributes for handling futures expressions
+        self.components = []  # List of component dictionaries (instrument, coefficient)
+        self.component_rates = component_rates or {}  # Prices for each component
+        self.component_coeff = {}  # Coefficients for each component (redundant with components, but kept for compatibility)
+        
     def calculate_pnl(self, futures_tick_data: pd.DataFrame = None) -> Dict[str, Any]:
-        """Calculate P&L for futures position using tick data"""
+        """Calculate P&L for futures position using tick data - handles both single instruments and expressions"""
         try:
             print(f"🔍 Calculating futures P&L for {self.handle}")
             print(f"   Instrument: {self.instrument}")
@@ -243,46 +248,89 @@ class XCFuturesPosition:
                 print(f"❌ {error_msg}")
                 return {'pnl': 0.0, 'error': error_msg}
             
-            # Check if instrument exists in the tick data
-            if self.instrument not in futures_tick_data.index:
-                error_msg = f"Instrument {self.instrument} not found in futures tick data"
-                print(f"❌ {error_msg}")
-                return {'pnl': 0.0, 'error': error_msg}
+            # Parse the instrument expression if not already done
+            if not self.components:
+                self.components = parse_futures_expression(self.instrument)
+                if not self.components:
+                    error_msg = f"Could not parse futures expression: {self.instrument}"
+                    print(f"❌ {error_msg}")
+                    return {'pnl': 0.0, 'error': error_msg}
             
-            # Get futures contract details
-            instrument_data = futures_tick_data.loc[self.instrument]
-            fut_tick_size = instrument_data['fut_tick_size']
-            fut_tick_val = instrument_data['fut_tick_val']
-            px_mid = instrument_data['px_mid']
+            # Calculate component rates (prices) if not already set
+            if not self.component_rates:
+                self.component_rates = solve_futures_component_prices(
+                    self.components, 
+                    self.price, 
+                    futures_tick_data
+                )
             
-            print(f"📊 Futures contract details:")
-            print(f"   Tick Size: {fut_tick_size}")
-            print(f"   Tick Value: ${fut_tick_val}")
-            print(f"   PX Mid: {px_mid}")
+            # Calculate P&L for each component and sum them up
+            total_pnl = 0.0
+            component_pnls = []
             
-            # Calculate P&L: (entry_price - px_mid) / tick_size * tick_value * size
-            price_diff = self.price - px_mid
-            
-            tick_count = price_diff / fut_tick_size
-            pnl = tick_count * fut_tick_val * self.size
-            
-            print(f"🧮 P&L calculation:")
-            print(f"   Price difference: {price_diff}")
-            print(f"   Tick count: {tick_count}")
-            print(f"   P&L: ${pnl:,.2f}")
-            
-            self.last_pnl = pnl
-            
-            return {
-                'pnl': pnl,
-                'error': None,
-                'details': {
-                    'entry_price': self.price,
+            for comp in self.components:
+                instrument = comp['instrument']
+                coefficient = comp['coefficient']
+                
+                # Check if instrument exists in the tick data
+                if instrument not in futures_tick_data.index:
+                    error_msg = f"Instrument {instrument} not found in futures tick data"
+                    print(f"❌ {error_msg}")
+                    component_pnls.append({
+                        'instrument': instrument,
+                        'pnl': 0.0,
+                        'error': error_msg
+                    })
+                    continue
+                
+                # Get futures contract details
+                instrument_data = futures_tick_data.loc[instrument]
+                fut_tick_size = instrument_data['fut_tick_size']
+                fut_tick_val = instrument_data['fut_tick_val']
+                px_mid = instrument_data['px_mid']
+                
+                # Get the component price
+                component_price = self.component_rates.get(instrument, px_mid)
+                
+                print(f"📊 Component {instrument}:")
+                print(f"   Coefficient: {coefficient}")
+                print(f"   Tick Size: {fut_tick_size}")
+                print(f"   Tick Value: ${fut_tick_val}")
+                print(f"   Entry Price: {component_price}")
+                print(f"   PX Mid: {px_mid}")
+                
+                # Calculate P&L for this component: (entry_price - px_mid) / tick_size * tick_value * size * coefficient
+                price_diff = component_price - px_mid
+                tick_count = price_diff / fut_tick_size
+                component_pnl = tick_count * fut_tick_val * self.size * coefficient
+                
+                print(f"🧮 Component P&L calculation:")
+                print(f"   Price difference: {price_diff}")
+                print(f"   Tick count: {tick_count}")
+                print(f"   Component P&L: ${component_pnl:,.2f}")
+                
+                total_pnl += component_pnl
+                
+                component_pnls.append({
+                    'instrument': instrument,
+                    'coefficient': coefficient,
+                    'pnl': component_pnl,
+                    'entry_price': component_price,
                     'px_mid': px_mid,
                     'price_diff': price_diff,
-                    'tick_count': tick_count,
-                    'tick_size': fut_tick_size,
-                    'tick_value': fut_tick_val,
+                    'error': None
+                })
+            
+            self.last_pnl = total_pnl
+            
+            print(f"✅ Total P&L for {self.handle}: ${total_pnl:,.2f}")
+            
+            return {
+                'pnl': total_pnl,
+                'error': None,
+                'components': component_pnls,
+                'details': {
+                    'total_components': len(self.components),
                     'size': self.size
                 }
             }
@@ -1574,3 +1622,197 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
     except Exception as e:
         print(f"❌ Error in calculate_futures_portfolio_pnl: {e}")
         return {'success': False, 'error': str(e)}
+
+def parse_futures_expression(expression: str) -> List[Dict[str, Any]]:
+    """
+    Parse futures expressions into components.
+    
+    Examples:
+    - "xmz5 comdty-ymz5 comdty" -> Two futures with coefficients +1 and -1
+    - "xmz5 comdty - ymz5 comdty" -> Two futures with coefficients +1 and -1 (with spaces)
+    - "2*irh5 comdty - irh6 comdty - irz7 comdty" -> Three futures with coefficients +2, -1, -1
+    - "xmz5 comdty" -> Single future with coefficient +1
+    
+    Returns:
+        List of dictionaries, each containing:
+        - instrument: The individual instrument (e.g., "xmz5 comdty")
+        - coefficient: The multiplier for this instrument (+1, -1, +2, etc.)
+    """
+    try:
+        print(f"🔍 Parsing futures expression: {expression}")
+        
+        # Normalize the expression - remove extra spaces and make lowercase for parsing
+        expr = expression.strip().lower()
+        
+        # Pattern to match futures instruments (e.g., "xmz5 comdty", "irh5 comdty")
+        # Matches: alphanumeric + whitespace + "comdty" or other suffixes
+        instrument_pattern = r'[a-z0-9]+\s+(?:comdty|curncy|index)'
+        
+        # Find all instruments in the expression
+        instruments = re.findall(instrument_pattern, expr)
+        
+        if not instruments:
+            # If no instruments found, treat the whole expression as a single instrument
+            print(f"⚠️ No standard futures instruments found, treating as single instrument: {expression}")
+            return [{
+                'instrument': expression.strip(),
+                'coefficient': 1.0
+            }]
+        
+        print(f"🔍 Found futures instruments: {instruments}")
+        
+        # Parse the expression to extract coefficients
+        components = []
+        
+        # Replace instruments with placeholders and track positions
+        temp_expr = expr
+        instrument_positions = {}
+        
+        for i, instrument in enumerate(instruments):
+            placeholder = f"__FUT_{i}__"
+            instrument_positions[placeholder] = instrument.strip()
+            temp_expr = temp_expr.replace(instrument, placeholder, 1)  # Replace only first occurrence
+        
+        print(f"🔍 Expression with placeholders: {temp_expr}")
+        
+        # Split by + and - while keeping the operators
+        parts = re.split(r'(\+|\-)', temp_expr)
+        parts = [part.strip() for part in parts if part.strip()]
+        
+        print(f"🔍 Split parts: {parts}")
+        
+        # Process each part to extract coefficient and instrument
+        current_sign = 1  # Start with positive
+        
+        for part in parts:
+            if part == '+':
+                current_sign = 1
+                continue
+            elif part == '-':
+                current_sign = -1
+                continue
+            
+            # Extract coefficient and instrument placeholder
+            coefficient = current_sign
+            
+            # Check for explicit coefficient (e.g., "2*__FUT_0__")
+            if '*' in part:
+                coeff_part, inst_part = part.split('*', 1)
+                try:
+                    coefficient = float(coeff_part.strip()) * current_sign
+                except ValueError:
+                    coefficient = current_sign
+                instrument_placeholder = inst_part.strip()
+            else:
+                instrument_placeholder = part.strip()
+            
+            # Find the actual instrument
+            if instrument_placeholder in instrument_positions:
+                instrument = instrument_positions[instrument_placeholder]
+                
+                components.append({
+                    'instrument': instrument,
+                    'coefficient': coefficient
+                })
+                
+                print(f"✅ Added futures component: {instrument} with coefficient {coefficient}")
+        
+        return components
+        
+    except Exception as e:
+        print(f"❌ Error parsing futures expression {expression}: {e}")
+        return []
+
+def solve_futures_component_prices(components: List[Dict[str, Any]], spread_price: float, 
+                                   futures_tick_data: pd.DataFrame) -> Dict[str, float]:
+    """
+    Solve for individual component prices given a spread price.
+    
+    For expression like A - B = X, given X (spread_price):
+    - Get current price for A from futures_tick_data
+    - Solve for B: B = A - X
+    
+    For expression like 2*A - B - C = X:
+    - Get current prices for A and B from futures_tick_data
+    - Solve for C: C = 2*A - B - X
+    
+    Args:
+        components: List of component dictionaries from parse_futures_expression
+        spread_price: The observed spread price
+        futures_tick_data: DataFrame with current prices (px_mid)
+        
+    Returns:
+        Dictionary mapping instrument -> price to use for P&L calculation
+    """
+    try:
+        print(f"🔧 Solving futures component prices for spread price: {spread_price}")
+        
+        # Get current prices for all components from futures_tick_data
+        current_prices = {}
+        for comp in components:
+            instrument = comp['instrument']
+            
+            if futures_tick_data is None or futures_tick_data.empty:
+                print(f"⚠️ No futures tick data available for {instrument}, using spread price")
+                current_prices[instrument] = spread_price
+            elif instrument in futures_tick_data.index:
+                px_mid = futures_tick_data.loc[instrument, 'px_mid']
+                current_prices[instrument] = px_mid
+                print(f"📊 Current price for {instrument}: {px_mid}")
+            else:
+                print(f"⚠️ Instrument {instrument} not found in tick data, using spread price")
+                current_prices[instrument] = spread_price
+        
+        # Find the component with the largest absolute coefficient to solve for
+        max_coeff = 0
+        solve_for_instrument = None
+        
+        for comp in components:
+            abs_coeff = abs(comp['coefficient'])
+            if abs_coeff > max_coeff:
+                max_coeff = abs_coeff
+                solve_for_instrument = comp['instrument']
+        
+        if not solve_for_instrument:
+            print("❌ No component found to solve for")
+            return current_prices
+        
+        print(f"🎯 Solving for: {solve_for_instrument}")
+        
+        # Calculate the sum of all other components
+        other_sum = 0.0
+        for comp in components:
+            if comp['instrument'] != solve_for_instrument:
+                other_sum += comp['coefficient'] * current_prices[comp['instrument']]
+        
+        # Solve for the unknown component
+        # Formula: coeff_unknown * price_unknown = spread_price - other_sum
+        solve_coeff = None
+        for comp in components:
+            if comp['instrument'] == solve_for_instrument:
+                solve_coeff = comp['coefficient']
+                break
+        
+        if solve_coeff == 0:
+            print(f"❌ Cannot solve: coefficient for {solve_for_instrument} is zero")
+            return current_prices
+        
+        solved_price = (spread_price - other_sum) / solve_coeff
+        
+        print(f"🧮 Calculation: {solve_coeff} * price = {spread_price} - {other_sum}")
+        print(f"✅ Solved price for {solve_for_instrument}: {solved_price}")
+        
+        # Update the prices dictionary
+        component_prices = current_prices.copy()
+        component_prices[solve_for_instrument] = solved_price
+        
+        # Verify the calculation
+        verification = sum(comp['coefficient'] * component_prices[comp['instrument']] for comp in components)
+        print(f"🔍 Verification: calculated spread = {verification}, target = {spread_price}")
+        
+        return component_prices
+        
+    except Exception as e:
+        print(f"❌ Error solving futures component prices: {e}")
+        # Return current prices as fallback
+        return {comp['instrument']: spread_price for comp in components}

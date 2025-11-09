@@ -370,20 +370,50 @@ def get_realtime_rates():
             # Handle futures expressions
             if trade_type == 'future':
                 try:
+                    # Check if it's a complex futures expression (e.g., "ymz5 comdty - xmz5 comdty")
+                    components = parse_futures_expression(expression)
                     
-                    # Get futures details using Bloomberg BDP
-                    futures_df = get_futures_details([expression])
+                    if not components:
+                        rates[label] = '--'
+                        base_rates[label] = None
+                        continue
                     
-                    if futures_df is not None and not futures_df.empty and expression in futures_df.index:
-                        # Get the last price from the futures data
-                        px_mid = futures_df.loc[expression, 'px_mid']
-                        rates[label] = f"{px_mid:.3f}"
-                        base_rates[label] = px_mid
+                    # Get unique instrument names from components
+                    unique_instruments = list(set([comp['instrument'] for comp in components]))
+                    
+                    # Get futures details for all unique instruments
+                    futures_df = get_futures_details(unique_instruments)
+                    
+                    if futures_df is None or futures_df.empty:
+                        rates[label] = '--'
+                        base_rates[label] = None
+                        continue
+                    
+                    # Calculate the result based on expression components
+                    result_value = 0.0
+                    all_instruments_found = True
+                    
+                    for comp in components:
+                        instrument = comp['instrument']
+                        coefficient = comp['coefficient']
+                        
+                        if instrument in futures_df.index:
+                            px_mid = futures_df.loc[instrument, 'px_mid']
+                            result_value += coefficient * px_mid
+                        else:
+                            print(f"⚠️ Instrument {instrument} not found in futures data")
+                            all_instruments_found = False
+                            break
+                    
+                    if all_instruments_found:
+                        rates[label] = f"{result_value:.3f}"
+                        base_rates[label] = result_value
                     else:
                         rates[label] = '--'
                         base_rates[label] = None
                     
                 except Exception as e:
+                    print(f"❌ Error processing futures expression '{expression}': {e}")
                     rates[label] = '--'
                     base_rates[label] = None
                 
