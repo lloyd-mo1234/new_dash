@@ -222,11 +222,14 @@ class XCSwapPosition:
 class XCFuturesPosition:
     """Represents a futures position for P&L calculation"""
     
-    def __init__(self, handle: str, price: float, size: float, 
+    def __init__(self, handle: str, price: float, size, 
                  instrument: str, component_rates: Dict[str, float] = None):
         self.handle = handle
         self.price = price  # Entry price (can be spread price for expressions)
-        self.size = size    # Number of lots
+        # Size can be either:
+        # - Single float: for simple expressions (e.g., 25)
+        # - List of floats: for multi-component expressions (e.g., [25, 30])
+        self.size = size
         self.instrument = instrument  # Futures instrument name or expression
         self.last_pnl = 0.0
         
@@ -234,6 +237,7 @@ class XCFuturesPosition:
         self.components = []  # List of component dictionaries (instrument, coefficient)
         self.component_rates = component_rates or {}  # Prices for each component
         self.component_coeff = {}  # Coefficients for each component (redundant with components, but kept for compatibility)
+        self.component_sizes = {}  # Individual sizes for each component
         
     def calculate_pnl(self, futures_tick_data: pd.DataFrame = None) -> Dict[str, Any]:
         """Calculate P&L for futures position using tick data - handles both single instruments and expressions"""
@@ -264,13 +268,27 @@ class XCFuturesPosition:
                     futures_tick_data
                 )
             
+            # Determine if we have individual component sizes
+            has_individual_sizes = isinstance(self.size, list) and len(self.size) == len(self.components)
+            
+            if has_individual_sizes:
+                print(f"   Using individual component sizes: {self.size}")
+            else:
+                print(f"   Using uniform size for all components: {self.size}")
+            
             # Calculate P&L for each component and sum them up
             total_pnl = 0.0
             component_pnls = []
             
-            for comp in self.components:
+            for idx, comp in enumerate(self.components):
                 instrument = comp['instrument']
                 coefficient = comp['coefficient']
+                
+                # Get the size for this component
+                if has_individual_sizes:
+                    component_size = self.size[idx]
+                else:
+                    component_size = self.size if isinstance(self.size, (int, float)) else 0
                 
                 # Check if instrument exists in the tick data
                 if instrument not in futures_tick_data.index:
@@ -294,6 +312,7 @@ class XCFuturesPosition:
                 
                 print(f"📊 Component {instrument}:")
                 print(f"   Coefficient: {coefficient}")
+                print(f"   Size: {component_size} lots")
                 print(f"   Tick Size: {fut_tick_size}")
                 print(f"   Tick Value: ${fut_tick_val}")
                 print(f"   Entry Price: {component_price}")
@@ -302,7 +321,7 @@ class XCFuturesPosition:
                 # Calculate P&L for this component: (entry_price - px_mid) / tick_size * tick_value * size * coefficient
                 price_diff = component_price - px_mid
                 tick_count = price_diff / fut_tick_size
-                component_pnl = tick_count * fut_tick_val * self.size * coefficient
+                component_pnl = tick_count * fut_tick_val * component_size * coefficient
                 
                 print(f"🧮 Component P&L calculation:")
                 print(f"   Price difference: {price_diff}")
@@ -314,6 +333,7 @@ class XCFuturesPosition:
                 component_pnls.append({
                     'instrument': instrument,
                     'coefficient': coefficient,
+                    'size': component_size,
                     'pnl': component_pnl,
                     'entry_price': component_price,
                     'px_mid': px_mid,
@@ -331,7 +351,8 @@ class XCFuturesPosition:
                 'components': component_pnls,
                 'details': {
                     'total_components': len(self.components),
-                    'size': self.size
+                    'size': self.size,
+                    'has_individual_sizes': has_individual_sizes
                 }
             }
             
@@ -348,6 +369,9 @@ class Trade:
         self.typology = typology if isinstance(typology, list) else [typology] if typology else []  # List of trade types
         self.secondary_typology = secondary_typology  # for EFP trades
         self.prices = []
+        # NEW: sizes is now a list of lists for futures expressions
+        # For swaps: sizes = [size1, size2, ...] (backward compatible)
+        # For futures with expressions: sizes = [[size_comp1, size_comp2], [size_comp1, size_comp2], ...]
         self.sizes = []
         self.instrument_details = []  # List of instruments
         self.positions = []  # List of position objects (XCSwapPosition, XCFuturesPosition, etc.)

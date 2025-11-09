@@ -1318,15 +1318,59 @@
             const row = document.createElement('tr');
             const positionId = `position_${positionCounter++}`;
             
+            // Check if this is a futures expression with multiple components
+            const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
+            const tradeTypeSelect = basicInfoRow?.querySelector('.modal-trade-type');
+            const instrumentInput = basicInfoRow?.querySelector('.modal-instrument');
+            
+            const tradeType = tradeTypeSelect?.value.trim() || '';
+            const instrument = instrumentInput?.value.trim() || '';
+            
+            let sizeCell = '';
+            
+            if (tradeType === 'future' && instrument) {
+                // Parse the futures expression to check for multiple components
+                const components = parseFuturesExpressionComponents(instrument);
+                
+                if (components.length > 1) {
+                    // Multiple components - show individual size inputs
+                    sizeCell = '<td><div style="display: flex; flex-direction: column; gap: 4px;">';
+                    components.forEach((comp, idx) => {
+                        sizeCell += `
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <span style="font-size: 10px; color: #888; min-width: 80px;">${comp.instrument}:</span>
+                                <input type="number" data-position-size="${positionId}" data-component-index="${idx}" 
+                                       placeholder="25" onchange="calculatePnL(this)" step="1" 
+                                       style="width: 60px; font-size: 11px;">
+                            </div>
+                        `;
+                    });
+                    sizeCell += '</div></td>';
+                } else {
+                    // Single component or simple expression
+                    sizeCell = `
+                        <td>
+                            <input type="number" data-position-size="${positionId}" placeholder="25" 
+                                   onchange="calculatePnL(this)" step="1">
+                        </td>
+                    `;
+                }
+            } else {
+                // Non-futures or no instrument yet
+                sizeCell = `
+                    <td>
+                        <input type="number" data-position-size="${positionId}" placeholder="25" 
+                               onchange="calculatePnL(this)" step="1">
+                    </td>
+                `;
+            }
+            
             row.innerHTML = `
                 <td>
                     <input type="number" data-position-price="${positionId}" placeholder="3.14" 
                            onchange="calculatePnL(this)" step="0.01">
                 </td>
-                <td>
-                    <input type="number" data-position-size="${positionId}" placeholder="25" 
-                           onchange="calculatePnL(this)" step="1">
-                </td>
+                ${sizeCell}
                 <td style="position: relative;">
                     <span class="pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
                     <button class="btn-remove" onclick="removePosition(this)" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%);">remove</button>
@@ -1334,6 +1378,62 @@
             `;
             
             tbody.appendChild(row);
+        }
+        
+        function parseFuturesExpressionComponents(expression) {
+            // Simple parser for futures expressions like "ymz5 comdty - xmz5 comdty"
+            const expr = expression.toLowerCase().trim();
+            
+            // Pattern to match futures instruments
+            const instrumentPattern = /[a-z0-9]+\s+(?:comdty|curncy|index)/g;
+            const instruments = expr.match(instrumentPattern) || [];
+            
+            if (instruments.length === 0) {
+                // Treat as single instrument
+                return [{ instrument: expression.trim(), coefficient: 1.0 }];
+            }
+            
+            // Parse coefficients
+            const components = [];
+            let temp_expr = expr;
+            const positions = {};
+            
+            instruments.forEach((inst, i) => {
+                const placeholder = `__fut_${i}__`;
+                positions[placeholder] = inst.trim();
+                temp_expr = temp_expr.replace(inst, placeholder);
+            });
+            
+            // Split by operators
+            const parts = temp_expr.split(/(\+|\-)/);
+            let current_sign = 1;
+            
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed === '+') {
+                    current_sign = 1;
+                } else if (trimmed === '-') {
+                    current_sign = -1;
+                } else if (trimmed) {
+                    let coefficient = current_sign;
+                    let placeholder = trimmed;
+                    
+                    if (trimmed.includes('*')) {
+                        const [coeff, inst] = trimmed.split('*');
+                        coefficient = parseFloat(coeff.trim()) * current_sign;
+                        placeholder = inst.trim();
+                    }
+                    
+                    if (positions[placeholder]) {
+                        components.push({
+                            instrument: positions[placeholder],
+                            coefficient: coefficient
+                        });
+                    }
+                }
+            }
+            
+            return components.length > 0 ? components : [{ instrument: expression.trim(), coefficient: 1.0 }];
         }
         
         function refreshFuturesDataIfNeeded() {
@@ -1598,21 +1698,80 @@
             const positions = [];
             const rows = document.getElementById('positionsTableBody').querySelectorAll('tr');
             
-            rows.forEach(row => {
+            console.log('🔍 Found', rows.length, 'position rows to process');
+            
+            // Check if we have a futures expression with multiple components
+            const isFuturesExpression = typologies.some(t => t === 'future') && instruments.length > 0;
+            let futuresComponents = [];
+            
+            if (isFuturesExpression) {
+                futuresComponents = parseFuturesExpressionComponents(instruments[0]);
+                console.log('📊 Futures expression detected, components:', futuresComponents);
+            }
+            
+            rows.forEach((row, rowIndex) => {
+                console.log(`🔍 Processing position row ${rowIndex + 1}`);
+                
                 const priceInput = row.querySelector('[data-position-price]');
-                const sizeInput = row.querySelector('[data-position-size]');
-                
                 const price = priceInput ? priceInput.value.trim() : '';
-                const size = sizeInput ? sizeInput.value.trim() : '';
                 
-                if (price && size) {
-                    // Use price exactly as entered (no conversion)
-                    positions.push({
-                        price: parseFloat(price),
-                        size: parseFloat(size)
-                    });
+                console.log(`  Price input found:`, priceInput ? 'YES' : 'NO');
+                console.log(`  Price value:`, price);
+                
+                if (price) {
+                    // Check if this position has multiple size inputs (futures expression with multiple components)
+                    const sizeInputs = row.querySelectorAll('[data-position-size]');
+                    
+                    console.log(`  Found ${sizeInputs.length} size input(s)`);
+                    
+                    if (sizeInputs.length > 1) {
+                        // Multiple component sizes - collect all of them
+                        const componentSizes = [];
+                        let allSizesValid = true;
+                        
+                        sizeInputs.forEach((sizeInput, sizeIndex) => {
+                            const size = sizeInput.value.trim();
+                            console.log(`    Size input ${sizeIndex + 1} value:`, size);
+                            
+                            if (size) {
+                                componentSizes.push(parseFloat(size));
+                            } else {
+                                allSizesValid = false;
+                            }
+                        });
+                        
+                        console.log(`  Component sizes collected:`, componentSizes);
+                        console.log(`  All sizes valid:`, allSizesValid);
+                        
+                        if (allSizesValid && componentSizes.length > 0) {
+                            positions.push({
+                                price: parseFloat(price),
+                                size: componentSizes  // Array of sizes for each component
+                            });
+                            console.log(`  ✅ Added position with multiple sizes:`, { price: parseFloat(price), size: componentSizes });
+                        }
+                    } else {
+                        // Single size input
+                        const sizeInput = row.querySelector('[data-position-size]');
+                        const size = sizeInput ? sizeInput.value.trim() : '';
+                        
+                        console.log(`  Single size input found:`, sizeInput ? 'YES' : 'NO');
+                        console.log(`  Single size value:`, size);
+                        
+                        if (size) {
+                            positions.push({
+                                price: parseFloat(price),
+                                size: parseFloat(size)  // Single size value
+                            });
+                            console.log(`  ✅ Added position with single size:`, { price: parseFloat(price), size: parseFloat(size) });
+                        }
+                    }
+                } else {
+                    console.log(`  ⚠️ Skipping row ${rowIndex + 1} - no price`);
                 }
             });
+            
+            console.log('📋 Total positions collected:', positions);
             
             // All positions are entry positions now
             const entryPositions = positions;
@@ -1927,9 +2086,32 @@
                             
                             // Use price as-is (no conversion)
                             lastRow.querySelector('[data-position-price]').value = price.toFixed(2);
-                            lastRow.querySelector('[data-position-size]').value = sizes[index];
                             
-                            console.log(`✅ Loaded position ${index + 1}: price=${price}, size=${sizes[index]}`);
+                            // Handle size - could be a single value or an array
+                            const sizeValue = sizes[index];
+                            
+                            if (Array.isArray(sizeValue)) {
+                                // Multiple component sizes - load into individual inputs
+                                const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
+                                console.log(`📊 Loading array size with ${sizeValue.length} components into ${sizeInputs.length} inputs`);
+                                
+                                sizeInputs.forEach((input, componentIndex) => {
+                                    if (componentIndex < sizeValue.length) {
+                                        input.value = sizeValue[componentIndex];
+                                        console.log(`  Component ${componentIndex + 1}: ${sizeValue[componentIndex]}`);
+                                    }
+                                });
+                                
+                                console.log(`✅ Loaded position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
+                            } else {
+                                // Single size value
+                                const sizeInput = lastRow.querySelector('[data-position-size]');
+                                if (sizeInput) {
+                                    sizeInput.value = sizeValue;
+                                }
+                                
+                                console.log(`✅ Loaded position ${index + 1}: price=${price}, size=${sizeValue}`);
+                            }
                         }
                     });
                     
@@ -2465,10 +2647,9 @@
             
             const row = input.closest('tr');
             const priceInput = row.querySelector('[data-position-price]');
-            const sizeInput = row.querySelector('[data-position-size]');
             const pnlDisplay = row.querySelector('.pnl-display');
             
-            if (!priceInput || !sizeInput || !pnlDisplay) {
+            if (!priceInput || !pnlDisplay) {
                 console.log('❌ Missing elements for P&L calculation');
                 return;
             }
@@ -2491,9 +2672,42 @@
             const tradeType = tradeTypeSelect.value.trim();
             const instrument = instrumentInput.value.trim();
             
-            // Get values directly from inputs (no formatting to remove)
+            // Get price
             const price = parseFloat(priceInput.value);
-            const size = parseFloat(sizeInput.value);
+            
+            // NEW: Collect ALL size inputs (may be multiple for futures expressions)
+            const sizeInputs = row.querySelectorAll('[data-position-size]');
+            let size;
+            
+            if (sizeInputs.length > 1) {
+                // Multiple component sizes - collect them as an array
+                const sizes = [];
+                let allValid = true;
+                
+                sizeInputs.forEach(input => {
+                    const val = parseFloat(input.value);
+                    if (!isNaN(val)) {
+                        sizes.push(val);
+                    } else {
+                        allValid = false;
+                    }
+                });
+                
+                if (!allValid || sizes.length === 0) {
+                    console.log('❌ Invalid or missing component sizes');
+                    return;
+                }
+                
+                size = sizes; // Array of sizes
+                console.log('📊 Multiple component sizes detected:', sizes);
+            } else if (sizeInputs.length === 1) {
+                // Single size input
+                size = parseFloat(sizeInputs[0].value);
+                console.log('📊 Single size detected:', size);
+            } else {
+                console.log('❌ No size inputs found');
+                return;
+            }
             
             // EFFICIENCY IMPROVEMENT: Get position index for reusing existing positions
             const positionRows = Array.from(document.querySelectorAll('#positionsTableBody tr'));
@@ -2504,8 +2718,16 @@
                 currentTradeId, positionIndex  // NEW: Include trade info for position reuse
             });
             
+            // Validate size (handle both single value and array)
+            let sizeIsValid = false;
+            if (Array.isArray(size)) {
+                sizeIsValid = size.length > 0 && size.every(s => !isNaN(s));
+            } else {
+                sizeIsValid = !isNaN(size);
+            }
+            
             // Calculate P&L for swaps and futures with valid data
-            if ((tradeType === 'swap' || tradeType === 'future') && instrument && !isNaN(price) && !isNaN(size)) {
+            if ((tradeType === 'swap' || tradeType === 'future') && instrument && !isNaN(price) && sizeIsValid) {
                 pnlDisplay.textContent = 'Calculating...';
                 pnlDisplay.style.color = '#cccccc';
                 

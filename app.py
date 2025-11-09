@@ -929,7 +929,11 @@ def add_trade():
         for price, size in zip(entry_prices, entry_sizes):
             if price and size:
                 trade.prices.append(float(price))
-                trade.sizes.append(float(size))
+                # Handle size as either single value or list (for futures expressions)
+                if isinstance(size, list):
+                    trade.sizes.append(size)  # Already a list, keep it as is
+                else:
+                    trade.sizes.append(float(size))  # Convert single value to float
         
         
         # Calculate and store total trade P&L if curves are available
@@ -1036,7 +1040,14 @@ def update_trade():
         
         
         trade.prices = [float(p) for p in entry_prices if p]
-        trade.sizes = [float(s) for s in entry_sizes if s]
+        # Handle sizes as either single values or lists (for futures expressions)
+        trade.sizes = []
+        for s in entry_sizes:
+            if s:
+                if isinstance(s, list):
+                    trade.sizes.append(s)  # Already a list, keep it as is
+                else:
+                    trade.sizes.append(float(s))  # Convert single value to float
         
         
         # Recalculate and store total trade P&L if curves are available
@@ -1220,7 +1231,11 @@ def calculate_swap_pnl():
             # Convert price/size from request for updating existing position
             try:
                 new_price = float(price_raw) if price_raw is not None else None
-                new_size = float(size_raw) if size_raw is not None else None
+                # Handle size as either single value or list
+                if isinstance(size_raw, list):
+                    new_size = [float(s) for s in size_raw] if size_raw is not None else None
+                else:
+                    new_size = float(size_raw) if size_raw is not None else None
             except (ValueError, TypeError):
                 new_price = None
                 new_size = None
@@ -1342,8 +1357,16 @@ def calculate_swap_pnl():
                 # Handle FUTURES positions
                 elif isinstance(existing_position, XCFuturesPosition):
                     
-                    # Get futures tick data
-                    futures_df = get_futures_details([existing_position.instrument])
+                    # Parse the futures expression to get individual components
+                    components = parse_futures_expression(existing_position.instrument)
+                    if not components:
+                        return jsonify({'error': f'Could not parse futures expression: {existing_position.instrument}'}), 400
+                    
+                    # Extract unique instrument names from components
+                    unique_instruments = list(set([comp['instrument'] for comp in components]))
+                    
+                    # Get futures tick data for all component instruments
+                    futures_df = get_futures_details(unique_instruments)
                     
                     # Calculate P&L using futures tick data
                     pnl_result = existing_position.calculate_pnl(futures_df)
@@ -1374,15 +1397,32 @@ def calculate_swap_pnl():
         
         
         # Convert to numbers with error handling
+        # Handle size as either a single value or an array (for futures expressions with multiple components)
         try:
             price = float(price_raw) if price_raw is not None else 0
-            size = float(size_raw) if size_raw is not None else 0
+            
+            # Check if size is an array (list) or a single value
+            if isinstance(size_raw, list):
+                # It's an array - convert each element to float
+                size = [float(s) for s in size_raw]
+                print(f"📊 Size is an array: {size}")
+            else:
+                # It's a single value - convert to float
+                size = float(size_raw) if size_raw is not None else 0
+                print(f"📊 Size is a single value: {size}")
         except (ValueError, TypeError) as e:
             return jsonify({'error': f'Invalid price or size format: {e}'}), 400
         
         # DON'T multiply by 100 - frontend sends price in correct form (4.9 for swaps, 96.40 for futures)
         
-        if not instrument or price == 0 or size == 0:
+        # Validate size (handle both single value and array)
+        size_is_valid = False
+        if isinstance(size, list):
+            size_is_valid = len(size) > 0 and all(s != 0 for s in size)
+        else:
+            size_is_valid = size != 0
+        
+        if not instrument or price == 0 or not size_is_valid:
             return jsonify({
                 'error': f'Missing required parameters: instrument="{instrument}", price={price}, size={size}'
             }), 400
@@ -1399,8 +1439,16 @@ def calculate_swap_pnl():
                 instrument=instrument
             )
             
-            # Get futures tick data
-            futures_df = get_futures_details([instrument])
+            # Parse the futures expression to get individual components
+            components = parse_futures_expression(instrument)
+            if not components:
+                return jsonify({'error': f'Could not parse futures expression: {instrument}'}), 400
+            
+            # Extract unique instrument names from components
+            unique_instruments = list(set([comp['instrument'] for comp in components]))
+            
+            # Get futures tick data for all component instruments
+            futures_df = get_futures_details(unique_instruments)
             
             # Calculate P&L
             pnl_result = position.calculate_pnl(futures_df)
