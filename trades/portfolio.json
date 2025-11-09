@@ -1,7 +1,7 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-09T11:16:47.727219",
-    "total_portfolio_pnl": 0.0
+    "last_pnl_update": "2025-11-09T11:21:36.201494",
+    "total_portfolio_pnl": 317172.500000003
   },
   "trades": {
     "trade1": {
@@ -11,16 +11,24 @@
       ],
       "secondary_typology": null,
       "prices": [
-        0.8
+        0.8,
+        0.9
       ],
       "sizes": [
-        300.0
+        [
+          300,
+          100
+        ],
+        [
+          400,
+          125
+        ]
       ],
       "instrument_details": [
         "ymz5 comdty - xmz5 comdty"
       ],
-      "stored_pnl": 0.0,
-      "pnl_timestamp": "2025-11-09T11:16:47.727219"
+      "stored_pnl": 317172.500000003,
+      "pnl_timestamp": "2025-11-09T11:21:36.201494"
     }
   }
 }

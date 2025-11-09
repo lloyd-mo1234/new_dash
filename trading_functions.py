@@ -238,6 +238,56 @@ class XCFuturesPosition:
         self.component_rates = component_rates or {}  # Prices for each component
         self.component_coeff = {}  # Coefficients for each component (redundant with components, but kept for compatibility)
         self.component_sizes = {}  # Individual sizes for each component
+        self.futures_built = False  # Track if futures expression has been built
+    
+    def build_futures_expression(self, futures_tick_data: pd.DataFrame = None):
+        """Build the futures expression by parsing components and getting prices"""
+        try:
+            print(f"🔧 Building futures expression for position: {self.handle}")
+            print(f"   Instrument: {self.instrument}")
+            print(f"   Entry Price: {self.price}")
+            print(f"   Size: {self.size}")
+            
+            # Parse the instrument expression if not already done
+            if not self.components:
+                self.components = parse_futures_expression(self.instrument)
+                if not self.components:
+                    print(f"❌ Could not parse futures expression: {self.instrument}")
+                    return False
+            
+            print(f"🔍 Found {len(self.components)} components:")
+            for i, comp in enumerate(self.components):
+                print(f"   {i+1}. {comp['instrument']} (coeff: {comp['coefficient']})")
+            
+            # Get futures tick data if not provided
+            if futures_tick_data is None or futures_tick_data.empty:
+                # Extract unique instrument names from components
+                unique_instruments = list(set([comp['instrument'] for comp in self.components]))
+                print(f"📊 Getting futures data for: {unique_instruments}")
+                
+                futures_tick_data = get_futures_details(unique_instruments)
+                
+                if futures_tick_data is None or futures_tick_data.empty:
+                    print(f"❌ No futures tick data available")
+                    return False
+            
+            # Calculate component prices if not already set
+            if not self.component_rates:
+                self.component_rates = solve_futures_component_prices(
+                    self.components, 
+                    self.price, 
+                    futures_tick_data
+                )
+                print(f"✅ Component prices calculated: {self.component_rates}")
+            
+            self.futures_built = True
+            print(f"✅ Futures expression built successfully for {self.handle}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error building futures expression for {self.handle}: {e}")
+            self.futures_built = False
+            return False
         
     def calculate_pnl(self, futures_tick_data: pd.DataFrame = None) -> Dict[str, Any]:
         """Calculate P&L for futures position using tick data - handles both single instruments and expressions"""
@@ -247,26 +297,22 @@ class XCFuturesPosition:
             print(f"   Entry Price: {self.price}")
             print(f"   Size: {self.size} lots")
             
-            if futures_tick_data is None or futures_tick_data.empty:
-                error_msg = f"No futures tick data available for {self.instrument}"
-                print(f"❌ {error_msg}")
-                return {'pnl': 0.0, 'error': error_msg}
-            
-            # Parse the instrument expression if not already done
-            if not self.components:
-                self.components = parse_futures_expression(self.instrument)
-                if not self.components:
-                    error_msg = f"Could not parse futures expression: {self.instrument}"
+            # Build the futures expression if not already built
+            if not self.futures_built:
+                if not self.build_futures_expression(futures_tick_data):
+                    error_msg = f"Failed to build futures expression for {self.instrument}"
                     print(f"❌ {error_msg}")
                     return {'pnl': 0.0, 'error': error_msg}
             
-            # Calculate component rates (prices) if not already set
-            if not self.component_rates:
-                self.component_rates = solve_futures_component_prices(
-                    self.components, 
-                    self.price, 
-                    futures_tick_data
-                )
+            if futures_tick_data is None or futures_tick_data.empty:
+                # Try to get futures data if not provided
+                unique_instruments = list(set([comp['instrument'] for comp in self.components]))
+                futures_tick_data = get_futures_details(unique_instruments)
+                
+                if futures_tick_data is None or futures_tick_data.empty:
+                    error_msg = f"No futures tick data available for {self.instrument}"
+                    print(f"❌ {error_msg}")
+                    return {'pnl': 0.0, 'error': error_msg}
             
             # Determine if we have individual component sizes
             has_individual_sizes = isinstance(self.size, list) and len(self.size) == len(self.components)
@@ -448,8 +494,12 @@ class Trade:
                     instrument=instrument
                 )
                 
-                self.positions.append(position)
-                print(f"✅ Futures position {i} created")
+                # Build the futures expression (parse components and get prices)
+                if position.build_futures_expression():
+                    self.positions.append(position)
+                    print(f"✅ Futures position {i} created with {len(position.components)} components")
+                else:
+                    print(f"❌ Failed to build futures position {i}")
             
             else:
                 print(f"⚠️ Unsupported trade type: {trade_type}")
