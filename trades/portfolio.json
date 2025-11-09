@@ -1,6 +1,6 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-09T11:21:36.201494",
+    "last_pnl_update": "2025-11-09T14:27:04.112246",
     "total_portfolio_pnl": 317172.500000003
   },
   "trades": {
@@ -21,14 +21,14 @@
         ],
         [
           400,
-          125
+          120
         ]
       ],
       "instrument_details": [
-        "ymz5 comdty - xmz5 comdty"
+        "ymz5 comdty-xmz5 comdty"
       ],
       "stored_pnl": 317172.500000003,
-      "pnl_timestamp": "2025-11-09T11:21:36.201494"
+      "pnl_timestamp": "2025-11-09T14:27:04.112246"
     }
   }
 }
