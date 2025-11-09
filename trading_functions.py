@@ -413,21 +413,48 @@ class Trade:
     def __init__(self, trade_id: str, typology=None, secondary_typology: str = None):
         self.trade_id = trade_id
         self.typology = typology if isinstance(typology, list) else [typology] if typology else []  # List of trade types
-        self.secondary_typology = secondary_typology  # for EFP trades
-        self.prices = []
-        # NEW: sizes is now a list of lists for futures expressions
-        # For swaps: sizes = [size1, size2, ...] (backward compatible)
-        # For futures with expressions: sizes = [[size_comp1, size_comp2], [size_comp1, size_comp2], ...]
-        self.sizes = []
-        self.instrument_details = []  # List of instruments
-        self.positions = []  # List of position objects (XCSwapPosition, XCFuturesPosition, etc.)
+        self.secondary_typology = secondary_typology  # for EFP trades (e.g., 'futures')
+        
+        # For EFP trades, we have dual data structures:
+        # Primary (swap) and Secondary (futures)
+        self.prices = []  # Primary prices (swap prices for EFP)
+        self.sizes = []  # Primary sizes (swap PV01 for EFP)
+        self.instrument_details = []  # Primary instruments (swap expressions for EFP)
+        self.positions = []  # Primary positions (XCSwapPosition objects for EFP)
+        
+        # Secondary data structures (for EFP futures leg)
+        self.prices_secondary = []  # Secondary prices (futures prices for EFP)
+        self.sizes_secondary = []  # Secondary sizes (list of lists for futures - each position can have multiple futures)
+        self.instrument_details_secondary = []  # Secondary instruments (futures expressions for EFP)
+        self.positions_secondary = []  # Secondary positions (XCFuturesPosition objects for EFP)
+        
         self.pnl = 0
         self.positions_pnl = 0
         
-    def add_position(self, price: float, size: float):
-        """Add a position to the trade"""
-        self.prices.append(price)
-        self.sizes.append(size)
+    def add_position(self, price: float, size, instrument: str = None, position_type: str = 'primary'):
+        """
+        Add a position to the trade
+        
+        Args:
+            price: Price for the position
+            size: Size for the position (can be float or list of floats for futures with multiple components)
+            instrument: Instrument for this position (optional, will use from instrument_details if not provided)
+            position_type: 'primary' for main leg (swap for EFP), 'secondary' for secondary leg (futures for EFP)
+        """
+        if position_type == 'secondary':
+            # Add to secondary lists (futures for EFP)
+            self.prices_secondary.append(price)
+            self.sizes_secondary.append(size)
+            if instrument:
+                if instrument not in self.instrument_details_secondary:
+                    self.instrument_details_secondary.append(instrument)
+        else:
+            # Add to primary lists (swap for EFP, or standard trades)
+            self.prices.append(price)
+            self.sizes.append(size)
+            if instrument:
+                if instrument not in self.instrument_details:
+                    self.instrument_details.append(instrument)
     
     def add_entry(self, price: float, size: float):
         """Legacy method - now calls add_position for backward compatibility"""
@@ -451,33 +478,93 @@ class Trade:
     def create_positions(self):
         """Create positions for all prices and sizes based on trade typology"""
         self.positions = []
+        self.positions_secondary = []
         
         # Get instrument details and typology
         if not self.instrument_details or not self.typology:
             print(f"⚠️ No instrument details or typology for trade {self.trade_id}")
             return False
             
-        instrument = self.instrument_details[0]
         trade_type = self.typology[0].lower() if self.typology else 'swap'
         
         print(f"🔄 Creating positions for trade {self.trade_id}")
         print(f"   Trade Type: {trade_type}")
-        print(f"   Instrument: {instrument}")
+        print(f"   Secondary Type: {self.secondary_typology}")
         
-        # Create positions for all prices and sizes
-        for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
-            handle = f"{self.trade_id}_position_{i}"
+        # Handle EFP trades
+        if trade_type == 'efp':
+            print(f"🔧 Creating EFP trade positions")
             
-            print(f"🔧 Creating position {i}: {handle}")
-            print(f"   Price: {price}")
-            print(f"   Size: {size}")
+            # Create primary positions (swap leg)
+            if self.instrument_details:
+                instrument = self.instrument_details[0]
+                print(f"   Primary (Swap) Instrument: {instrument}")
+                
+                for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
+                    handle = f"{self.trade_id}_swap_position_{i}"
+                    
+                    print(f"🔧 Creating swap position {i}: {handle}")
+                    print(f"   Price: {price}")
+                    print(f"   Size (PV01): {size}")
+                    
+                    position = XCSwapPosition(
+                        handle=handle,
+                        price=price,
+                        size=size,
+                        instrument=instrument
+                    )
+                    
+                    if position.create_xc_swaps():
+                        self.positions.append(position)
+                        print(f"✅ Swap position {i} created with {len(position.xc_swaps)} component swaps")
+                    else:
+                        print(f"❌ Failed to create swap position {i}")
             
-            if trade_type == 'swap':
+            # Create secondary positions (futures leg)
+            if self.instrument_details_secondary and self.secondary_typology == 'futures':
+                instrument = self.instrument_details_secondary[0]
+                print(f"   Secondary (Futures) Instrument: {instrument}")
+                
+                for i, (price, size) in enumerate(zip(self.prices_secondary, self.sizes_secondary)):
+                    handle = f"{self.trade_id}_futures_position_{i}"
+                    
+                    print(f"🔧 Creating futures position {i}: {handle}")
+                    print(f"   Price: {price}")
+                    print(f"   Size: {size}")
+                    
+                    position = XCFuturesPosition(
+                        handle=handle,
+                        price=price,
+                        size=size,
+                        instrument=instrument
+                    )
+                    
+                    if position.build_futures_expression():
+                        self.positions_secondary.append(position)
+                        print(f"✅ Futures position {i} created with {len(position.components)} components")
+                    else:
+                        print(f"❌ Failed to build futures position {i}")
+            
+            print(f"✅ EFP trade: Created {len(self.positions)} swap positions and {len(self.positions_secondary)} futures positions")
+            return True
+        
+        # Handle standard swap trades
+        elif trade_type == 'swap':
+            instrument = self.instrument_details[0]
+            print(f"   Instrument: {instrument}")
+            
+            for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
+                handle = f"{self.trade_id}_position_{i}"
+                
+                print(f"🔧 Creating position {i}: {handle}")
+                print(f"   Price: {price}")
+                print(f"   Size: {size}")
+                
                 position = XCSwapPosition(
                     handle=handle,
-                    price=price,  # This is the spread price
+                    price=price,
                     size=size,
-                    instrument=instrument  # Complex expression like "aud.10y10y-aud.5y5y"
+                    instrument=instrument
                 )
                 
                 if position.create_xc_swaps():
@@ -485,8 +572,19 @@ class Trade:
                     print(f"✅ Swap position {i} created with {len(position.xc_swaps)} component swaps")
                 else:
                     print(f"❌ Failed to create swap position {i}")
-                    
-            elif trade_type == 'future':
+        
+        # Handle standard futures trades
+        elif trade_type == 'future':
+            instrument = self.instrument_details[0]
+            print(f"   Instrument: {instrument}")
+            
+            for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
+                handle = f"{self.trade_id}_position_{i}"
+                
+                print(f"🔧 Creating position {i}: {handle}")
+                print(f"   Price: {price}")
+                print(f"   Size: {size}")
+                
                 position = XCFuturesPosition(
                     handle=handle,
                     price=price,
@@ -494,29 +592,30 @@ class Trade:
                     instrument=instrument
                 )
                 
-                # Build the futures expression (parse components and get prices)
                 if position.build_futures_expression():
                     self.positions.append(position)
                     print(f"✅ Futures position {i} created with {len(position.components)} components")
                 else:
                     print(f"❌ Failed to build futures position {i}")
-            
-            else:
-                print(f"⚠️ Unsupported trade type: {trade_type}")
         
-        print(f"✅ Created {len(self.positions)} positions for trade {self.trade_id}")
+        else:
+            print(f"⚠️ Unsupported trade type: {trade_type}")
+            return False
+        
+        print(f"✅ Created {len(self.positions)} primary positions for trade {self.trade_id}")
         return True
     
     def calculate_pnl(self, live_price: float = None, use_xc: bool = True, curve_handle: str = None, 
                      futures_tick_data: pd.DataFrame = None) -> Dict[str, float]:
         """Calculate PnL for the trade using position-specific methods"""
         
-        if self.positions:
+        if self.positions or self.positions_secondary:
             # Use position-based P&L calculation
             total_pnl = 0.0
             position_pnls = []
             errors = []
             
+            # Calculate P&L for primary positions
             for position in self.positions:
                 if isinstance(position, XCSwapPosition):
                     pnl_result = position.calculate_pnl(curve_handle)
@@ -533,14 +632,37 @@ class Trade:
                     'handle': position.handle,
                     'pnl': pnl_value,
                     'error': pnl_error,
-                    'position_class': type(position).__name__
+                    'position_class': type(position).__name__,
+                    'position_type': 'primary'
                 })
                 
                 if pnl_error:
                     errors.append(f"{position.handle}: {pnl_error}")
             
+            # Calculate P&L for secondary positions (EFP futures leg)
+            for position in self.positions_secondary:
+                if isinstance(position, XCFuturesPosition):
+                    pnl_result = position.calculate_pnl(futures_tick_data)
+                elif isinstance(position, XCSwapPosition):
+                    pnl_result = position.calculate_pnl(curve_handle)
+                else:
+                    pnl_result = {'pnl': 0.0, 'error': f'Unknown position type: {type(position)}'}
+                
+                pnl_value = pnl_result['pnl']
+                pnl_error = pnl_result['error']
+                
+                total_pnl += pnl_value
+                position_pnls.append({
+                    'handle': position.handle,
+                    'pnl': pnl_value,
+                    'error': pnl_error,
+                    'position_class': type(position).__name__,
+                    'position_type': 'secondary'
+                })
+                
+                if pnl_error:
+                    errors.append(f"{position.handle}: {pnl_error}")
             
-
             return {
                 "realized_pnl": 0.0,  # Position-based gives total P&L
                 "unrealized_pnl": total_pnl,
@@ -599,16 +721,27 @@ class Portfolio:
             }
             
             for trade_id, trade in self.trades.items():
-                data['trades'][trade_id] = {
+                # Determine secondary_typology: 'futures' for EFP trades, None otherwise
+                secondary_typology = trade.secondary_typology
+                if not secondary_typology and trade.typology and 'efp' in [t.lower() for t in trade.typology]:
+                    secondary_typology = 'futures'
+                
+                trade_data = {
                     'trade_id': trade.trade_id,
                     'typology': trade.typology,
-                    'secondary_typology': trade.secondary_typology,
+                    'secondary_typology': secondary_typology,
                     'prices': trade.prices,
                     'sizes': trade.sizes,
                     'instrument_details': trade.instrument_details,
                     'stored_pnl': getattr(trade, 'stored_pnl', 0.0),
-                    'pnl_timestamp': getattr(trade, 'pnl_timestamp', None)
+                    'pnl_timestamp': getattr(trade, 'pnl_timestamp', None),
+                    # Always include secondary attributes (empty lists if not present)
+                    'prices_secondary': getattr(trade, 'prices_secondary', []),
+                    'sizes_secondary': getattr(trade, 'sizes_secondary', []),
+                    'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', [])
                 }
+                
+                data['trades'][trade_id] = trade_data
             
             with open(self.storage_file, 'w') as f:
                 json.dump(data, f, indent=2)
@@ -660,6 +793,16 @@ class Portfolio:
                         trade.instrument_details = [instrument_details] if instrument_details else []
                     else:
                         trade.instrument_details = instrument_details
+                    
+                    # Load secondary data structures (for EFP trades)
+                    trade.prices_secondary = trade_data.get('prices_secondary', [])
+                    trade.sizes_secondary = trade_data.get('sizes_secondary', [])
+                    
+                    instrument_details_secondary = trade_data.get('instrument_details_secondary', [])
+                    if isinstance(instrument_details_secondary, str):
+                        trade.instrument_details_secondary = [instrument_details_secondary] if instrument_details_secondary else []
+                    else:
+                        trade.instrument_details_secondary = instrument_details_secondary
                     
                     # Load stored P&L data (new format)
                     trade.stored_pnl = trade_data.get('stored_pnl', 0.0)
@@ -827,9 +970,13 @@ class Portfolio:
             "trade_id": trade.trade_id,
             "typology": trade.typology,
             "instrument_details": trade.instrument_details,
-            "prices": trade.prices,  # Add prices array
-            "sizes": trade.sizes,    # Add sizes array
-            "pnl": pnl
+            "prices": trade.prices,
+            "sizes": trade.sizes,
+            "pnl": pnl,
+            # Add secondary data structures for EFP trades
+            "prices_secondary": getattr(trade, 'prices_secondary', []),
+            "sizes_secondary": getattr(trade, 'sizes_secondary', []),
+            "instrument_details_secondary": getattr(trade, 'instrument_details_secondary', [])
         }
 
     def update_realtime_pnl(self) -> Dict[str, Any]:
@@ -1512,12 +1659,21 @@ def get_futures_instrument_names(portfolio) -> List[str]:
         futures_instruments = set()
         
         for trade_id, trade in portfolio.trades.items():
-            # Check if trade has futures typology
+            # Check if trade has futures typology (standard futures trades)
             if trade.typology and 'future' in [t.lower() for t in trade.typology]:
                 # Add all instrument details for this futures trade
                 for instrument in trade.instrument_details:
                     if instrument:
                         futures_instruments.add(instrument)
+            
+            # Check if trade is EFP with secondary futures leg
+            if trade.typology and 'efp' in [t.lower() for t in trade.typology]:
+                if hasattr(trade, 'instrument_details_secondary') and trade.instrument_details_secondary:
+                    # Add all secondary instrument details for EFP trades
+                    for instrument in trade.instrument_details_secondary:
+                        if instrument:
+                            futures_instruments.add(instrument)
+                            print(f"🔍 Added EFP futures instrument: {instrument}")
         
         futures_list = list(futures_instruments)
         print(f"🔍 Found {len(futures_list)} unique futures instruments: {futures_list}")

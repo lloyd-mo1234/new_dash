@@ -367,8 +367,64 @@ def get_realtime_rates():
                 # Skip mathematical expressions for now, handle in second pass
                 continue
             
+            # Handle EFP expressions (Exchange for Physical - both swap and futures legs)
+            if trade_type == 'efp':
+                try:
+                    # For EFP, the primary expression is the swap leg
+                    # Handle it as a swap expression
+                    print(f"🔄 Processing EFP swap leg: {expression}")
+                    
+                    # Check if it's a complex swap expression
+                    if any(op in expression for op in ['+', '-', '*', '/']) and re.search(r'[a-z]+\.\d+[ymd]', expression.lower()):
+                        # Complex swap expression
+                        components = parse_complex_expression(expression)
+                        
+                        if not components:
+                            rates[label] = '--'
+                            base_rates[label] = None
+                            continue
+                        
+                        # Get par rates for all components
+                        par_rates = {}
+                        for comp in components:
+                            instrument = comp['instrument']
+                            try:
+                                df, error = get_swap_data(instrument)
+                                if error or df is None or df.empty:
+                                    par_rates[instrument] = 3.0  # Default fallback
+                                else:
+                                    par_rate = df['Rate'].iloc[-1]
+                                    par_rates[instrument] = par_rate
+                            except Exception as e:
+                                par_rates[instrument] = 3.0  # Default fallback
+                        
+                        # Calculate the spread value
+                        spread_value = sum(comp['coefficient'] * par_rates[comp['instrument']] for comp in components)
+                        
+                        rates[label] = f"{spread_value:.3f}%"
+                        base_rates[label] = spread_value
+                    else:
+                        # Simple swap expression
+                        df, error = get_swap_data(expression)
+                        if error or df is None or df.empty:
+                            rates[label] = '--'
+                            base_rates[label] = None
+                        else:
+                            latest_rate = df['Rate'].iloc[-1]
+                            rates[label] = f"{latest_rate:.3f}%"
+                            base_rates[label] = latest_rate
+                    
+                    print(f"✅ EFP swap leg rate for {label}: {rates[label]}")
+                    
+                except Exception as e:
+                    print(f"❌ Error processing EFP swap leg '{expression}': {e}")
+                    rates[label] = '--'
+                    base_rates[label] = None
+                
+                continue
+            
             # Handle futures expressions
-            if trade_type == 'future':
+            elif trade_type == 'future':
                 try:
                     # Check if it's a complex futures expression (e.g., "ymz5 comdty - xmz5 comdty")
                     components = parse_futures_expression(expression)
@@ -419,7 +475,7 @@ def get_realtime_rates():
                 
                 continue
             
-            # Handle swap expressions only
+            # Handle swap expressions
             else:
                 # Check if it's a complex expression (contains arithmetic operators with instruments)
                 if any(op in expression for op in ['+', '-', '*', '/']) and re.search(r'[a-z]+\.\d+[ymd]', expression.lower()):
@@ -911,30 +967,71 @@ def add_trade():
         typologies = data.get('typologies', [])
         instruments = data.get('instruments', [])
         
+        # For EFP trades, separate primary and secondary data
+        primary_typology = typologies[0] if len(typologies) > 0 else None
+        secondary_typology = typologies[1] if len(typologies) > 1 else None
         
-        # Create new trade with lists
+        primary_instrument = instruments[0] if len(instruments) > 0 else None
+        secondary_instrument = instruments[1] if len(instruments) > 1 else None
+        
+        # Create new trade
         trade = Trade(
             trade_id=trade_id,
-            typology=typologies,
-            secondary_typology=data.get('secondary_instrument') if 'efp' in typologies else None
+            typology=primary_typology,
+            secondary_typology=secondary_typology
         )
         
-        trade.instrument_details = instruments
+        # Set instrument details - for EFP trades, separate primary and secondary instruments
+        is_efp = primary_typology == 'efp' and secondary_typology
+        
+        if is_efp:
+            # For EFP: primary instrument (swap) goes to instrument_details, secondary (futures) goes to instrument_details_secondary
+            trade.instrument_details = [primary_instrument] if primary_instrument else []
+            trade.instrument_details_secondary = [secondary_instrument] if secondary_instrument else []
+        else:
+            # For non-EFP trades: all instruments go to instrument_details
+            trade.instrument_details = [primary_instrument] if primary_instrument else []
         
         # Add positions from arrays - handle both old format (entry_prices/entry_sizes) and new format (prices/sizes)
         entry_prices = data.get('entry_prices', data.get('prices', []))
         entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
+        # For EFP trades, split positions into primary (swap) and secondary (futures)
+        is_efp = primary_typology == 'efp' and len(typologies) >= 2
         
-        for price, size in zip(entry_prices, entry_sizes):
-            if price and size:
-                trade.prices.append(float(price))
-                # Handle size as either single value or list (for futures expressions)
-                if isinstance(size, list):
-                    trade.sizes.append(size)  # Already a list, keep it as is
-                else:
-                    trade.sizes.append(float(size))  # Convert single value to float
-        
+        if is_efp:
+            # Split positions - frontend sends them combined with primary first, then secondary
+            # Determine split point (could be based on number of typologies, or divide evenly)
+            split_point = len(entry_prices) // 2  # Assume equal split for now
+            
+            # Primary positions (swap leg)
+            for price, size in zip(entry_prices[:split_point], entry_sizes[:split_point]):
+                if price and size:
+                    trade.prices.append(float(price))
+                    if isinstance(size, list):
+                        trade.sizes.append(size)
+                    else:
+                        trade.sizes.append(float(size))
+            
+            # Secondary positions (futures leg)
+            for price, size in zip(entry_prices[split_point:], entry_sizes[split_point:]):
+                if price and size:
+                    trade.prices_secondary.append(float(price))
+                    if isinstance(size, list):
+                        trade.sizes_secondary.append(size)
+                    else:
+                        trade.sizes_secondary.append(float(size))
+            
+            print(f"✅ EFP trade split: {len(trade.prices)} primary, {len(trade.prices_secondary)} secondary positions")
+        else:
+            # Non-EFP trade - store all in primary arrays
+            for price, size in zip(entry_prices, entry_sizes):
+                if price and size:
+                    trade.prices.append(float(price))
+                    if isinstance(size, list):
+                        trade.sizes.append(size)
+                    else:
+                        trade.sizes.append(float(size))
         
         # Calculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1028,27 +1125,72 @@ def update_trade():
         typologies = data.get('typologies', [])
         instruments = data.get('instruments', [])
         
+        # For EFP trades, separate primary and secondary data
         if typologies:
-            trade.typology = typologies
+            trade.typology = typologies[0] if len(typologies) > 0 else None
+            trade.secondary_typology = typologies[1] if len(typologies) > 1 else None
         
         if instruments:
-            trade.instrument_details = instruments
+            # Set instrument details - for EFP trades, separate primary and secondary instruments
+            primary_instrument = instruments[0] if len(instruments) > 0 else None
+            secondary_instrument = instruments[1] if len(instruments) > 1 else None
+            
+            is_efp_update = trade.typology == 'efp' and trade.secondary_typology
+            
+            if is_efp_update:
+                # For EFP: primary instrument (swap) goes to instrument_details, secondary (futures) goes to instrument_details_secondary
+                trade.instrument_details = [primary_instrument] if primary_instrument else []
+                trade.instrument_details_secondary = [secondary_instrument] if secondary_instrument else []
+            else:
+                # For non-EFP trades: all instruments go to instrument_details
+                trade.instrument_details = [primary_instrument] if primary_instrument else []
         
         # Update positions - handle both old format (entry_prices/entry_sizes) and new format (prices/sizes)
         entry_prices = data.get('entry_prices', data.get('prices', []))
         entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
+        # Check if this is an EFP trade that needs position splitting
+        is_efp = trade.typology == 'efp' and trade.secondary_typology
         
-        trade.prices = [float(p) for p in entry_prices if p]
-        # Handle sizes as either single values or lists (for futures expressions)
-        trade.sizes = []
-        for s in entry_sizes:
-            if s:
-                if isinstance(s, list):
-                    trade.sizes.append(s)  # Already a list, keep it as is
-                else:
-                    trade.sizes.append(float(s))  # Convert single value to float
-        
+        if is_efp:
+            # Clear existing arrays
+            trade.prices = []
+            trade.sizes = []
+            trade.prices_secondary = []
+            trade.sizes_secondary = []
+            
+            # Split positions - frontend sends them combined with primary first, then secondary
+            split_point = len(entry_prices) // 2  # Assume equal split
+            
+            # Primary positions (swap leg)
+            for price, size in zip(entry_prices[:split_point], entry_sizes[:split_point]):
+                if price and size:
+                    trade.prices.append(float(price))
+                    if isinstance(size, list):
+                        trade.sizes.append(size)
+                    else:
+                        trade.sizes.append(float(size))
+            
+            # Secondary positions (futures leg)
+            for price, size in zip(entry_prices[split_point:], entry_sizes[split_point:]):
+                if price and size:
+                    trade.prices_secondary.append(float(price))
+                    if isinstance(size, list):
+                        trade.sizes_secondary.append(size)
+                    else:
+                        trade.sizes_secondary.append(float(size))
+            
+            print(f"✅ EFP trade updated: {len(trade.prices)} primary, {len(trade.prices_secondary)} secondary positions")
+        else:
+            # Non-EFP trade - store all in primary arrays
+            trade.prices = [float(p) for p in entry_prices if p]
+            trade.sizes = []
+            for s in entry_sizes:
+                if s:
+                    if isinstance(s, list):
+                        trade.sizes.append(s)
+                    else:
+                        trade.sizes.append(float(s))
         
         # Recalculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1219,6 +1361,7 @@ def calculate_swap_pnl():
         trade_id = data.get('trade_id')  # Accept trade_id to reuse existing positions
         position_index = data.get('position_index', 0)  # Which position in the trade
         trade_type = data.get('tradeType', 'swap').lower()
+        position_type = data.get('positionType', 'primary')  # 'primary' or 'secondary' (for EFP)
         instrument = data.get('instrument')
         price_raw = data.get('price')
         size_raw = data.get('size')
@@ -1240,11 +1383,32 @@ def calculate_swap_pnl():
                 new_price = None
                 new_size = None
             
-            # Check if positions are already created
-            if (hasattr(trade, 'positions') and 
-                len(trade.positions) > position_index):
-                
-                existing_position = trade.positions[position_index]
+            # For EFP trades, check which leg we're calculating (primary = swap, secondary = futures)
+            if trade_type == 'efp':
+                if position_type == 'secondary':
+                    # Use secondary positions (futures leg)
+                    if (hasattr(trade, 'positions_secondary') and 
+                        len(trade.positions_secondary) > position_index):
+                        existing_position = trade.positions_secondary[position_index]
+                    else:
+                        existing_position = None
+                else:
+                    # Use primary positions (swap leg)
+                    if (hasattr(trade, 'positions') and 
+                        len(trade.positions) > position_index):
+                        existing_position = trade.positions[position_index]
+                    else:
+                        existing_position = None
+            else:
+                # Standard swap or futures trade
+                if (hasattr(trade, 'positions') and 
+                    len(trade.positions) > position_index):
+                    existing_position = trade.positions[position_index]
+                else:
+                    existing_position = None
+            
+            # Process existing position if found
+            if existing_position:
                 
                 # UPDATE existing position with new values if provided
                 if new_price is not None and new_size is not None:
@@ -1252,15 +1416,24 @@ def calculate_swap_pnl():
                     existing_position.size = new_size
                     
                     # Also update the underlying trade arrays to keep them in sync
-                    # Ensure arrays are long enough
-                    while len(trade.prices) <= position_index:
-                        trade.prices.append(0.0)
-                    while len(trade.sizes) <= position_index:
-                        trade.sizes.append(0.0)
-                    
-                    # Update the values
-                    trade.prices[position_index] = new_price
-                    trade.sizes[position_index] = new_size
+                    if trade_type == 'efp' and position_type == 'secondary':
+                        # Update secondary arrays for EFP futures leg
+                        while len(trade.prices_secondary) <= position_index:
+                            trade.prices_secondary.append(0.0)
+                        while len(trade.sizes_secondary) <= position_index:
+                            trade.sizes_secondary.append(0.0)
+                        
+                        trade.prices_secondary[position_index] = new_price
+                        trade.sizes_secondary[position_index] = new_size
+                    else:
+                        # Update primary arrays (for standard trades or EFP swap leg)
+                        while len(trade.prices) <= position_index:
+                            trade.prices.append(0.0)
+                        while len(trade.sizes) <= position_index:
+                            trade.sizes.append(0.0)
+                        
+                        trade.prices[position_index] = new_price
+                        trade.sizes[position_index] = new_size
                     
                     
                     # Mark XC swaps as outdated so they get recreated with new values
@@ -1271,8 +1444,11 @@ def calculate_swap_pnl():
                     # Save the updated portfolio to JSON file
                     portfolio.save_to_file()
                     
-                    # CRITICAL FIX: Clear positions array to force recreation with new price/size
-                    trade.positions = []
+                    # CRITICAL FIX: Clear positions arrays to force recreation with new price/size
+                    if trade_type == 'efp' and position_type == 'secondary':
+                        trade.positions_secondary = []
+                    else:
+                        trade.positions = []
                     
                     # Force recreation by setting existing_position to None
                     existing_position = None

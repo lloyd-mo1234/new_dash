@@ -728,7 +728,7 @@
                         <tbody id="basicInfoTableBody">
                             <tr>
                                 <td>
-                                    <select class="modal-trade-type" id="singleTradeType" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)">
+                                    <select class="modal-trade-type" id="singleTradeType" onchange="handleTypeChange(this)" oninput="handleTypeChange(this)">
                                         <option value="">Select Type</option>
                                         <option value="swap">Swap</option>
                                         <option value="future">Future</option>
@@ -746,13 +746,28 @@
                                     <span class="total-pnl-display" id="singleTotalPnL" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
                                 </td>
                             </tr>
+                            <!-- Secondary row for EFP futures leg (hidden by default) -->
+                            <tr id="secondaryInstrumentRow" style="display: none;">
+                                <td>
+                                    <span style="color: #888; padding: 4px 8px; font-size: 11px;">Futures</span>
+                                </td>
+                                <td>
+                                    <input type="text" class="modal-instrument-secondary" id="secondaryInstrument" placeholder="e.g., xmz5 comdty-ymz5 comdty" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
+                                </td>
+                                <td>
+                                    <span class="live-rate-display" id="secondaryLiveRate" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
+                                </td>
+                                <td>
+                                    <span class="total-pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
                 
-                <!-- Positions Table -->
-                <div class="positions-section">
-                    <h4>Positions</h4>
+                <!-- Positions Table (Primary - for Swap leg) -->
+                <div class="positions-section" id="primaryPositionsSection">
+                    <h4 id="primaryPositionsTitle">Positions</h4>
                     <div class="positions-table-container">
                         <table class="positions-table" id="positionsTable">
                             <thead>
@@ -769,9 +784,31 @@
                     </div>
                     
                     <div class="position-buttons">
-                        <button type="button" class="btn btn-secondary" onclick="addPosition()">+ Add Position</button>
+                        <button type="button" class="btn btn-secondary" onclick="addPosition('primary')">+ Add Position</button>
+                    </div>
+                </div>
+                
+                <!-- Secondary Positions Table (for EFP Futures leg) -->
+                <div class="positions-section" id="secondaryPositionsSection" style="display: none; margin-top: 20px;">
+                    <h4>Futures Positions</h4>
+                    <div class="positions-table-container">
+                        <table class="positions-table" id="secondaryPositionsTable">
+                            <thead>
+                                <tr>
+                                    <th>Price</th>
+                                    <th>01</th>
+                                    <th>P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="secondaryPositionsTableBody">
+                                <!-- Secondary positions will be added here -->
+                            </tbody>
+                        </table>
                     </div>
                     
+                    <div class="position-buttons">
+                        <button type="button" class="btn btn-secondary" onclick="addPosition('secondary')">+ Add Position</button>
+                    </div>
                 </div>
                 
                 <div style="margin-top: 20px; text-align: right;">
@@ -1254,10 +1291,28 @@
                 liveRateDisplay.style.color = '#cccccc';
             }
             
-            // Remove any additional rows
+            // Clear secondary row but keep it in the DOM (just hide it)
+            const secondaryRow = document.getElementById('secondaryInstrumentRow');
+            if (secondaryRow) {
+                secondaryRow.style.display = 'none';
+                const secondaryInput = secondaryRow.querySelector('.modal-instrument-secondary');
+                if (secondaryInput) {
+                    secondaryInput.value = '';
+                }
+                const secondaryLiveRate = secondaryRow.querySelector('.live-rate-display');
+                if (secondaryLiveRate) {
+                    secondaryLiveRate.textContent = '--';
+                    secondaryLiveRate.style.color = '#cccccc';
+                }
+            }
+            
+            // Remove any additional rows (but NOT the secondaryInstrumentRow)
             const allRows = tbody.querySelectorAll('tr');
             for (let i = 1; i < allRows.length; i++) {
-                allRows[i].remove();
+                // Skip the secondaryInstrumentRow - we want to keep it in the DOM
+                if (allRows[i].id !== 'secondaryInstrumentRow') {
+                    allRows[i].remove();
+                }
             }
             
             document.getElementById('positionsTableBody').innerHTML = '';
@@ -1313,18 +1368,35 @@
             });
         }
         
-        function addPosition() {
-            const tbody = document.getElementById('positionsTableBody');
+        function addPosition(tableType = 'primary') {
+            // Determine which table to add to
+            const tbody = tableType === 'secondary' 
+                ? document.getElementById('secondaryPositionsTableBody')
+                : document.getElementById('positionsTableBody');
+            
             const row = document.createElement('tr');
             const positionId = `position_${positionCounter++}`;
             
-            // Check if this is a futures expression with multiple components
-            const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
-            const tradeTypeSelect = basicInfoRow?.querySelector('.modal-trade-type');
-            const instrumentInput = basicInfoRow?.querySelector('.modal-instrument');
+            // For secondary positions, always check the secondary instrument
+            // For primary positions, check the primary instrument
+            let tradeType, instrument;
             
-            const tradeType = tradeTypeSelect?.value.trim() || '';
-            const instrument = instrumentInput?.value.trim() || '';
+            if (tableType === 'secondary') {
+                // Secondary = futures leg of EFP
+                const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                const instrumentInput = secondaryRow?.querySelector('.modal-instrument-secondary');
+                tradeType = 'future'; // EFP secondary is always futures
+                instrument = instrumentInput?.value.trim() || '';
+            } else {
+                // Primary = main trade or swap leg of EFP
+                const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
+                const tradeTypeSelect = basicInfoRow?.querySelector('.modal-trade-type');
+                const instrumentInput = basicInfoRow?.querySelector('.modal-instrument');
+                tradeType = tradeTypeSelect?.value.trim() || '';
+                instrument = instrumentInput?.value.trim() || '';
+            }
+            
+            console.log(`🔧 Adding ${tableType} position for type:`, tradeType, 'instrument:', instrument);
             
             let sizeCell = '';
             
@@ -1378,6 +1450,7 @@
             `;
             
             tbody.appendChild(row);
+            console.log(`✅ Added ${tableType} position to table`);
         }
         
         function parseFuturesExpressionComponents(expression) {
@@ -1497,6 +1570,57 @@
             return options;
         }
         
+        // Function to handle type change and show/hide secondary instrument row for EFP
+        function handleTypeChange(selectElement) {
+            console.log('🔄 Type changed:', selectElement.value);
+            
+            const secondaryRow = document.getElementById('secondaryInstrumentRow');
+            const secondaryPositionsSection = document.getElementById('secondaryPositionsSection');
+            const primaryPositionsTitle = document.getElementById('primaryPositionsTitle');
+            const secondaryPositionsTableBody = document.getElementById('secondaryPositionsTableBody');
+            
+            if (selectElement.value === 'efp') {
+                // Show secondary instrument row and positions section for EFP
+                if (secondaryRow) {
+                    secondaryRow.style.display = '';
+                    console.log('✅ Showing secondary instrument row for EFP');
+                }
+                if (secondaryPositionsSection) {
+                    secondaryPositionsSection.style.display = 'block';
+                }
+                if (primaryPositionsTitle) {
+                    primaryPositionsTitle.textContent = 'Swap Positions';
+                }
+                
+                // Add a secondary position if table is empty
+                if (secondaryPositionsTableBody && secondaryPositionsTableBody.children.length === 0) {
+                    console.log('➕ Auto-adding first secondary position for EFP');
+                    addPosition('secondary');
+                }
+            } else {
+                // Hide secondary instrument row and positions section for non-EFP trades
+                if (secondaryRow) {
+                    secondaryRow.style.display = 'none';
+                }
+                if (secondaryPositionsSection) {
+                    secondaryPositionsSection.style.display = 'none';
+                }
+                if (primaryPositionsTitle) {
+                    primaryPositionsTitle.textContent = 'Positions';
+                }
+                console.log('📊 Hiding secondary instrument row and positions section for non-EFP');
+                
+                // Clear secondary positions when switching away from EFP
+                if (secondaryPositionsTableBody) {
+                    secondaryPositionsTableBody.innerHTML = '';
+                    console.log('🗑️ Cleared secondary positions');
+                }
+            }
+            
+            // Also trigger live rate update
+            updateLiveRate(selectElement);
+        }
+        
         function updateLiveRate(element) {
             console.log('🔍 updateLiveRate called with element:', element);
             
@@ -1504,17 +1628,33 @@
             console.log('🔍 Found row:', row);
             
             const typeSelect = row.querySelector('.modal-trade-type');
-            const instrumentInput = row.querySelector('.modal-instrument');
+            // Support both primary and secondary instrument inputs
+            const instrumentInput = row.querySelector('.modal-instrument, .modal-instrument-secondary');
             const liveRateDisplay = row.querySelector('.live-rate-display');
             
             console.log('🔍 Elements found:', { typeSelect, instrumentInput, liveRateDisplay });
             
-            if (!typeSelect || !instrumentInput || !liveRateDisplay) {
+            if (!instrumentInput || !liveRateDisplay) {
                 console.log('❌ Missing required elements');
                 return;
             }
             
-            const type = typeSelect.value.trim();
+            // For secondary row (EFP futures), type is always 'future'
+            // For primary row, get from the type select (but convert 'efp' to 'swap')
+            let type;
+            if (row.id === 'secondaryInstrumentRow') {
+                type = 'future';
+            } else if (typeSelect) {
+                type = typeSelect.value.trim();
+                // EFP primary leg is always a swap
+                if (type === 'efp') {
+                    type = 'swap';
+                }
+            } else {
+                console.log('❌ No type select found and not secondary row');
+                return;
+            }
+            
             const instrument = instrumentInput.value.trim();
             
             console.log('🔍 Values:', { type, instrument });
@@ -1667,72 +1807,69 @@
             // Collect basic trade info from the table
             const tradeIdentifier = document.getElementById('modalTitle').value.trim();
             
-            // Collect all rows from basic info table
-            const basicInfoRows = document.getElementById('basicInfoTableBody').querySelectorAll('tr');
+            // Collect primary row (first row)
+            const primaryRow = document.querySelector('#basicInfoTableBody tr:first-child');
+            const primaryTypeSelect = primaryRow.querySelector('select.modal-trade-type');
+            const primaryInstrumentInput = primaryRow.querySelector('input.modal-instrument');
+            
+            const primaryType = primaryTypeSelect ? primaryTypeSelect.value.trim() : '';
+            const primaryInstrument = primaryInstrumentInput ? primaryInstrumentInput.value.trim() : '';
+            
+            console.log('📊 Primary:', { type: primaryType, instrument: primaryInstrument });
+            
+            // Check if it's an EFP trade - collect secondary row if present
+            let secondaryType = null;
+            let secondaryInstrument = null;
+            
+            if (primaryType === 'efp') {
+                const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                if (secondaryRow && secondaryRow.style.display !== 'none') {
+                    const secondaryInstrumentInput = secondaryRow.querySelector('input.modal-instrument-secondary');
+                    secondaryInstrument = secondaryInstrumentInput ? secondaryInstrumentInput.value.trim() : '';
+                    secondaryType = 'future'; // EFP secondary is always futures
+                    
+                    console.log('📊 Secondary (EFP):', { type: secondaryType, instrument: secondaryInstrument });
+                }
+            }
+            
+            // Build typologies and instruments arrays
             const typologies = [];
             const instruments = [];
             
-            console.log('🔍 Found', basicInfoRows.length, 'basic info rows');
+            if (primaryType && primaryInstrument) {
+                typologies.push(primaryType);
+                instruments.push(primaryInstrument);
+            }
             
-            basicInfoRows.forEach((row, index) => {
-                const tradeTypeSelect = row.querySelector('select.modal-trade-type');
-                const instrumentInput = row.querySelector('input.modal-instrument');
-                
-                if (tradeTypeSelect && instrumentInput) {
-                    const tradeType = tradeTypeSelect.value.trim();
-                    const instrument = instrumentInput.value.trim();
-                    
-                    console.log(`🔍 Row ${index + 1} values: Type="${tradeType}", Instrument="${instrument}"`);
-                    
-                    if (tradeType && instrument) {
-                        typologies.push(tradeType);
-                        instruments.push(instrument);
-                        console.log(`✅ Added to arrays: Type="${tradeType}", Instrument="${instrument}"`);
-                    }
-                }
-            });
+            if (secondaryType && secondaryInstrument) {
+                typologies.push(secondaryType);
+                instruments.push(secondaryInstrument);
+            }
             
             console.log('📊 Final arrays:', { typologies, instruments });
             
-            // Collect positions (all positions are treated as entry positions now)
-            const positions = [];
-            const rows = document.getElementById('positionsTableBody').querySelectorAll('tr');
+            // Collect PRIMARY positions (swap leg for EFP, or main positions for other types)
+            const primaryPositions = [];
+            const primaryRows = document.getElementById('positionsTableBody').querySelectorAll('tr');
             
-            console.log('🔍 Found', rows.length, 'position rows to process');
+            console.log('🔍 Found', primaryRows.length, 'PRIMARY position rows to process');
             
-            // Check if we have a futures expression with multiple components
-            const isFuturesExpression = typologies.some(t => t === 'future') && instruments.length > 0;
-            let futuresComponents = [];
-            
-            if (isFuturesExpression) {
-                futuresComponents = parseFuturesExpressionComponents(instruments[0]);
-                console.log('📊 Futures expression detected, components:', futuresComponents);
-            }
-            
-            rows.forEach((row, rowIndex) => {
-                console.log(`🔍 Processing position row ${rowIndex + 1}`);
+            primaryRows.forEach((row, rowIndex) => {
+                console.log(`🔍 Processing PRIMARY position row ${rowIndex + 1}`);
                 
                 const priceInput = row.querySelector('[data-position-price]');
                 const price = priceInput ? priceInput.value.trim() : '';
                 
-                console.log(`  Price input found:`, priceInput ? 'YES' : 'NO');
-                console.log(`  Price value:`, price);
-                
                 if (price) {
-                    // Check if this position has multiple size inputs (futures expression with multiple components)
                     const sizeInputs = row.querySelectorAll('[data-position-size]');
                     
-                    console.log(`  Found ${sizeInputs.length} size input(s)`);
-                    
                     if (sizeInputs.length > 1) {
-                        // Multiple component sizes - collect all of them
+                        // Multiple component sizes
                         const componentSizes = [];
                         let allSizesValid = true;
                         
                         sizeInputs.forEach((sizeInput, sizeIndex) => {
                             const size = sizeInput.value.trim();
-                            console.log(`    Size input ${sizeIndex + 1} value:`, size);
-                            
                             if (size) {
                                 componentSizes.push(parseFloat(size));
                             } else {
@@ -1740,42 +1877,103 @@
                             }
                         });
                         
-                        console.log(`  Component sizes collected:`, componentSizes);
-                        console.log(`  All sizes valid:`, allSizesValid);
-                        
                         if (allSizesValid && componentSizes.length > 0) {
-                            positions.push({
+                            primaryPositions.push({
                                 price: parseFloat(price),
-                                size: componentSizes  // Array of sizes for each component
+                                size: componentSizes
                             });
-                            console.log(`  ✅ Added position with multiple sizes:`, { price: parseFloat(price), size: componentSizes });
+                            console.log(`  ✅ Added PRIMARY position with multiple sizes:`, { price: parseFloat(price), size: componentSizes });
                         }
                     } else {
                         // Single size input
                         const sizeInput = row.querySelector('[data-position-size]');
                         const size = sizeInput ? sizeInput.value.trim() : '';
                         
-                        console.log(`  Single size input found:`, sizeInput ? 'YES' : 'NO');
-                        console.log(`  Single size value:`, size);
-                        
                         if (size) {
-                            positions.push({
+                            primaryPositions.push({
                                 price: parseFloat(price),
-                                size: parseFloat(size)  // Single size value
+                                size: parseFloat(size)
                             });
-                            console.log(`  ✅ Added position with single size:`, { price: parseFloat(price), size: parseFloat(size) });
+                            console.log(`  ✅ Added PRIMARY position with single size:`, { price: parseFloat(price), size: parseFloat(size) });
                         }
                     }
-                } else {
-                    console.log(`  ⚠️ Skipping row ${rowIndex + 1} - no price`);
                 }
             });
             
-            console.log('📋 Total positions collected:', positions);
+            console.log('📋 Total PRIMARY positions collected:', primaryPositions);
             
-            // All positions are entry positions now
-            const entryPositions = positions;
-            const exitPositions = [];
+            // Collect SECONDARY positions (futures leg for EFP only)
+            const secondaryPositions = [];
+            if (primaryType === 'efp') {
+                const secondaryRows = document.getElementById('secondaryPositionsTableBody').querySelectorAll('tr');
+                console.log('🔍 Found', secondaryRows.length, 'SECONDARY position rows to process');
+                
+                secondaryRows.forEach((row, rowIndex) => {
+                    console.log(`🔍 Processing SECONDARY position row ${rowIndex + 1}`);
+                    
+                    const priceInput = row.querySelector('[data-position-price]');
+                    const price = priceInput ? priceInput.value.trim() : '';
+                    
+                    if (price) {
+                        const sizeInputs = row.querySelectorAll('[data-position-size]');
+                        
+                        if (sizeInputs.length > 1) {
+                            // Multiple component sizes
+                            const componentSizes = [];
+                            let allSizesValid = true;
+                            
+                            sizeInputs.forEach((sizeInput, sizeIndex) => {
+                                const size = sizeInput.value.trim();
+                                if (size) {
+                                    componentSizes.push(parseFloat(size));
+                                } else {
+                                    allSizesValid = false;
+                                }
+                            });
+                            
+                            if (allSizesValid && componentSizes.length > 0) {
+                                secondaryPositions.push({
+                                    price: parseFloat(price),
+                                    size: componentSizes
+                                });
+                                console.log(`  ✅ Added SECONDARY position with multiple sizes:`, { price: parseFloat(price), size: componentSizes });
+                            }
+                        } else {
+                            // Single size input
+                            const sizeInput = row.querySelector('[data-position-size]');
+                            const size = sizeInput ? sizeInput.value.trim() : '';
+                            
+                            if (size) {
+                                secondaryPositions.push({
+                                    price: parseFloat(price),
+                                    size: parseFloat(size)
+                                });
+                                console.log(`  ✅ Added SECONDARY position with single size:`, { price: parseFloat(price), size: parseFloat(size) });
+                            }
+                        }
+                    }
+                });
+                
+                console.log('📋 Total SECONDARY positions collected:', secondaryPositions);
+            }
+            
+            // For non-EFP trades, use primary positions as entry positions
+            // For EFP trades, we need to send both primary and secondary positions
+            let entryPositions, exitPositions;
+            
+            if (primaryType === 'efp' && secondaryPositions.length > 0) {
+                // EFP: Combine both position sets
+                // Primary positions (swap) go to index 0
+                // Secondary positions (futures) go to index 1
+                entryPositions = [...primaryPositions, ...secondaryPositions];
+                exitPositions = [];
+                console.log('📊 EFP trade: Combined positions:', entryPositions);
+            } else {
+                // Non-EFP: Use primary positions only
+                entryPositions = primaryPositions;
+                exitPositions = [];
+                console.log('📊 Non-EFP trade: Using primary positions only:', entryPositions);
+            }
             
             // Check if we're editing an existing trade or creating a new one
             if (currentTradeId) {
@@ -2015,8 +2213,16 @@
                     // Set the modal title to the trade identifier
                     document.getElementById('modalTitle').value = trade.trade_id;
                     
-                    // Clear the basic info table first
+                    // Clear the basic info table first, but preserve the secondaryInstrumentRow
                     const tbody = document.getElementById('basicInfoTableBody');
+                    const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                    
+                    // Remove secondaryRow temporarily to preserve it
+                    if (secondaryRow && secondaryRow.parentNode === tbody) {
+                        tbody.removeChild(secondaryRow);
+                    }
+                    
+                    // Clear the rest
                     tbody.innerHTML = '';
                     
                     // Get the typologies and instruments arrays
@@ -2061,6 +2267,10 @@
                         
                         if (i < typologies.length && typologies[i]) {
                             typeSelect.value = typologies[i];
+                            // Trigger handleTypeChange for the first row to show secondary sections if EFP
+                            if (i === 0 && typologies[i] === 'efp') {
+                                handleTypeChange(typeSelect);
+                            }
                         }
                         if (i < instruments.length && instruments[i]) {
                             instrumentInput.value = instruments[i];
@@ -2069,51 +2279,200 @@
                         console.log(`✅ Row ${i + 1}: Type="${typeSelect.value}", Instrument="${instrumentInput.value}"`);
                     }
                     
-                    // Clear and load positions
+                    // Re-add the secondaryInstrumentRow back to the tbody
+                    if (secondaryRow) {
+                        tbody.appendChild(secondaryRow);
+                    }
+                    
+                    // Clear positions BEFORE setting up EFP
                     const positionsTableBody = document.getElementById('positionsTableBody');
+                    const secondaryPositionsTableBody = document.getElementById('secondaryPositionsTableBody');
                     positionsTableBody.innerHTML = '';
+                    secondaryPositionsTableBody.innerHTML = '';
                     
-                    // Load positions from trade.prices and trade.sizes
-                    const prices = trade.prices || [];
-                    const sizes = trade.sizes || [];
-                    
-                    console.log('📋 Loading positions:', { prices, sizes });
-                    
-                    prices.forEach((price, index) => {
-                        if (sizes[index] !== undefined) {
-                            addPosition();
-                            const lastRow = positionsTableBody.lastElementChild;
+                    // NOW configure EFP if needed - BEFORE loading positions
+                    if (typologies.includes('efp')) {
+                        const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                        const secondaryPositionsSection = document.getElementById('secondaryPositionsSection');
+                        const primaryPositionsTitle = document.getElementById('primaryPositionsTitle');
+                        
+                        if (secondaryRow) {
+                            secondaryRow.style.display = '';
+                            console.log('✅ EFP trade detected, showing secondary row');
                             
-                            // Use price as-is (no conversion)
-                            lastRow.querySelector('[data-position-price]').value = price.toFixed(2);
-                            
-                            // Handle size - could be a single value or an array
-                            const sizeValue = sizes[index];
-                            
-                            if (Array.isArray(sizeValue)) {
-                                // Multiple component sizes - load into individual inputs
-                                const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
-                                console.log(`📊 Loading array size with ${sizeValue.length} components into ${sizeInputs.length} inputs`);
-                                
-                                sizeInputs.forEach((input, componentIndex) => {
-                                    if (componentIndex < sizeValue.length) {
-                                        input.value = sizeValue[componentIndex];
-                                        console.log(`  Component ${componentIndex + 1}: ${sizeValue[componentIndex]}`);
-                                    }
-                                });
-                                
-                                console.log(`✅ Loaded position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
-                            } else {
-                                // Single size value
-                                const sizeInput = lastRow.querySelector('[data-position-size]');
-                                if (sizeInput) {
-                                    sizeInput.value = sizeValue;
+                            // Populate secondary instrument field FIRST - CRITICAL FOR addPosition to work
+                            if (trade.instrument_details_secondary && trade.instrument_details_secondary.length > 0) {
+                                const secondaryInstrumentInput = secondaryRow.querySelector('.modal-instrument-secondary');
+                                if (secondaryInstrumentInput) {
+                                    secondaryInstrumentInput.value = trade.instrument_details_secondary[0];
+                                    console.log('✅ Set secondary instrument:', trade.instrument_details_secondary[0]);
+                                    console.log('🔍 Secondary instrument field value check:', secondaryInstrumentInput.value);
                                 }
-                                
-                                console.log(`✅ Loaded position ${index + 1}: price=${price}, size=${sizeValue}`);
                             }
                         }
+                        
+                        // Show secondary positions section
+                        if (secondaryPositionsSection) {
+                            secondaryPositionsSection.style.display = 'block';
+                            console.log('✅ Showing secondary positions section');
+                        }
+                        
+                        // Update primary title
+                        if (primaryPositionsTitle) {
+                            primaryPositionsTitle.textContent = 'Swap Positions';
+                        }
+                    }
+                    
+                    // Load positions - NEW: Load from separate arrays for EFP
+                    const prices = trade.prices || [];
+                    const sizes = trade.sizes || [];
+                    const prices_secondary = trade.prices_secondary || [];
+                    const sizes_secondary = trade.sizes_secondary || [];
+                    
+                    console.log('📋 Loading positions:', { 
+                        prices, sizes, 
+                        prices_secondary, sizes_secondary 
                     });
+                    
+                    // Check if this is an EFP trade
+                    const isEFP = typologies.includes('efp');
+                    
+                    if (isEFP) {
+                        // EFP trade: Load primary (swap) positions from prices/sizes
+                        console.log(`📊 EFP trade detected, loading ${prices.length} primary and ${prices_secondary.length} secondary positions`);
+                        
+                        // Load primary (swap) positions
+                        prices.forEach((price, index) => {
+                            if (sizes[index] !== undefined) {
+                                console.log(`➕ Adding PRIMARY position ${index + 1}`);
+                                addPosition('primary');
+                                
+                                // Wait a moment for the row to be added to DOM
+                                setTimeout(() => {
+                                    const lastRow = positionsTableBody.lastElementChild;
+                                    if (!lastRow) {
+                                        console.error('❌ No row found after addPosition');
+                                        return;
+                                    }
+                                    
+                                    const priceInput = lastRow.querySelector('[data-position-price]');
+                                    if (priceInput) {
+                                        priceInput.value = price.toFixed(2);
+                                    }
+                                    
+                                    const sizeValue = sizes[index];
+                                    if (Array.isArray(sizeValue)) {
+                                        const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
+                                        sizeInputs.forEach((input, componentIndex) => {
+                                            if (componentIndex < sizeValue.length) {
+                                                input.value = sizeValue[componentIndex];
+                                            }
+                                        });
+                                        console.log(`✅ Loaded PRIMARY position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
+                                    } else {
+                                        const sizeInput = lastRow.querySelector('[data-position-size]');
+                                        if (sizeInput) {
+                                            sizeInput.value = sizeValue;
+                                        }
+                                        console.log(`✅ Loaded PRIMARY position ${index + 1}: price=${price}, size=${sizeValue}`);
+                                    }
+                                }, 50 * index); // Stagger the additions
+                            }
+                        });
+                        
+                        // Load secondary (futures) positions from prices_secondary/sizes_secondary
+                        // CRITICAL: Wait for primary positions to finish AND for secondary instrument to be set
+                        const secondaryDelay = 200 + (prices.length * 60);
+                        console.log(`⏰ Waiting ${secondaryDelay}ms before loading secondary positions`);
+                        
+                        setTimeout(() => {
+                            // Double-check secondary instrument is available
+                            const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                            const secondaryInstrumentInput = secondaryRow?.querySelector('.modal-instrument-secondary');
+                            console.log('🔍 Pre-position check - Secondary instrument value:', secondaryInstrumentInput?.value);
+                            
+                            prices_secondary.forEach((price, index) => {
+                                if (sizes_secondary[index] !== undefined) {
+                                    console.log(`➕ Adding SECONDARY position ${index + 1} with delay`);
+                                    
+                                    setTimeout(() => {
+                                        console.log(`🔧 Actually adding SECONDARY position ${index + 1} now`);
+                                        addPosition('secondary');
+                                        
+                                        // Wait for DOM update
+                                        setTimeout(() => {
+                                            const lastRow = secondaryPositionsTableBody.lastElementChild;
+                                            if (!lastRow) {
+                                                console.error('❌ No secondary row found after addPosition');
+                                                return;
+                                            }
+                                            
+                                            const priceInput = lastRow.querySelector('[data-position-price]');
+                                            if (priceInput) {
+                                                priceInput.value = price.toFixed(2);
+                                                console.log(`  📝 Set price to ${price}`);
+                                            }
+                                            
+                                            const sizeValue = sizes_secondary[index];
+                                            if (Array.isArray(sizeValue)) {
+                                                const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
+                                                console.log(`  🔍 Found ${sizeInputs.length} size inputs for array value`);
+                                                sizeInputs.forEach((input, componentIndex) => {
+                                                    if (componentIndex < sizeValue.length) {
+                                                        input.value = sizeValue[componentIndex];
+                                                        console.log(`    Component ${componentIndex}: ${sizeValue[componentIndex]}`);
+                                                    }
+                                                });
+                                                console.log(`✅ Loaded SECONDARY position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
+                                            } else {
+                                                const sizeInput = lastRow.querySelector('[data-position-size]');
+                                                if (sizeInput) {
+                                                    sizeInput.value = sizeValue;
+                                                    console.log(`  📝 Set size to ${sizeValue}`);
+                                                }
+                                                console.log(`✅ Loaded SECONDARY position ${index + 1}: price=${price}, size=${sizeValue}`);
+                                            }
+                                        }, 100); // Give DOM time to update
+                                    }, index * 100); // Stagger each position
+                                }
+                            });
+                        }, secondaryDelay);
+                        
+                    } else {
+                        // Non-EFP trade: load all positions into primary table
+                        console.log(`📊 Non-EFP trade, loading all ${prices.length} positions into primary table`);
+                        
+                        prices.forEach((price, index) => {
+                            if (sizes[index] !== undefined) {
+                                addPosition('primary');
+                                const lastRow = positionsTableBody.lastElementChild;
+                                
+                                lastRow.querySelector('[data-position-price]').value = price.toFixed(2);
+                                
+                                const sizeValue = sizes[index];
+                                if (Array.isArray(sizeValue)) {
+                                    const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
+                                    console.log(`📊 Loading array size with ${sizeValue.length} components into ${sizeInputs.length} inputs`);
+                                    
+                                    sizeInputs.forEach((input, componentIndex) => {
+                                        if (componentIndex < sizeValue.length) {
+                                            input.value = sizeValue[componentIndex];
+                                            console.log(`  Component ${componentIndex + 1}: ${sizeValue[componentIndex]}`);
+                                        }
+                                    });
+                                    
+                                    console.log(`✅ Loaded position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
+                                } else {
+                                    const sizeInput = lastRow.querySelector('[data-position-size]');
+                                    if (sizeInput) {
+                                        sizeInput.value = sizeValue;
+                                    }
+                                    
+                                    console.log(`✅ Loaded position ${index + 1}: price=${price}, size=${sizeValue}`);
+                                }
+                            }
+                        });
+                    }
                     
                     // Note: Exit positions are no longer supported in the simplified interface
                     // All positions are treated as entry positions
@@ -2654,23 +3013,57 @@
                 return;
             }
             
-            // Get basic trade info
-            const basicInfoRow = document.querySelector('#basicInfoTableBody tr');
-            if (!basicInfoRow) {
-                console.log('❌ No basic info row found');
-                return;
+            // Determine if this position is in primary or secondary table
+            const positionsTableBody = document.getElementById('positionsTableBody');
+            const secondaryPositionsTableBody = document.getElementById('secondaryPositionsTableBody');
+            
+            const isSecondaryPosition = secondaryPositionsTableBody && secondaryPositionsTableBody.contains(row);
+            
+            console.log(`🔍 Position is in ${isSecondaryPosition ? 'SECONDARY' : 'PRIMARY'} table`);
+            
+            // Get the appropriate trade info based on which table the position is in
+            let tradeType, instrument;
+            
+            if (isSecondaryPosition) {
+                // For secondary positions (EFP futures leg)
+                const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                if (secondaryRow) {
+                    const instrumentInput = secondaryRow.querySelector('.modal-instrument-secondary');
+                    instrument = instrumentInput ? instrumentInput.value.trim() : '';
+                    tradeType = 'future'; // EFP secondary is always futures
+                    console.log('📊 Using SECONDARY (futures) instrument:', instrument);
+                } else {
+                    console.log('❌ No secondary row found');
+                    return;
+                }
+            } else {
+                // For primary positions (swap for EFP, or standard trades)
+                const basicInfoRow = document.querySelector('#basicInfoTableBody tr:first-child');
+                if (!basicInfoRow) {
+                    console.log('❌ No basic info row found');
+                    return;
+                }
+                
+                const tradeTypeSelect = basicInfoRow.querySelector('.modal-trade-type');
+                const instrumentInput = basicInfoRow.querySelector('.modal-instrument');
+                
+                if (!tradeTypeSelect || !instrumentInput) {
+                    console.log('❌ Missing basic trade info elements');
+                    return;
+                }
+                
+                const rawTradeType = tradeTypeSelect.value.trim();
+                instrument = instrumentInput.value.trim();
+                
+                // For EFP primary leg, use 'swap' type instead of 'efp'
+                if (rawTradeType === 'efp') {
+                    tradeType = 'swap';
+                    console.log('📊 Using PRIMARY (swap leg of EFP) instrument:', instrument);
+                } else {
+                    tradeType = rawTradeType;
+                    console.log('📊 Using PRIMARY instrument:', instrument, 'Type:', tradeType);
+                }
             }
-            
-            const tradeTypeSelect = basicInfoRow.querySelector('.modal-trade-type');
-            const instrumentInput = basicInfoRow.querySelector('.modal-instrument');
-            
-            if (!tradeTypeSelect || !instrumentInput) {
-                console.log('❌ Missing basic trade info elements');
-                return;
-            }
-            
-            const tradeType = tradeTypeSelect.value.trim();
-            const instrument = instrumentInput.value.trim();
             
             // Get price
             const price = parseFloat(priceInput.value);
@@ -2710,7 +3103,9 @@
             }
             
             // EFFICIENCY IMPROVEMENT: Get position index for reusing existing positions
-            const positionRows = Array.from(document.querySelectorAll('#positionsTableBody tr'));
+            // Use the appropriate table based on position type
+            const positionTable = isSecondaryPosition ? secondaryPositionsTableBody : positionsTableBody;
+            const positionRows = Array.from(positionTable.querySelectorAll('tr'));
             const positionIndex = positionRows.indexOf(row);
             
             console.log('📊 P&L calculation inputs:', {
