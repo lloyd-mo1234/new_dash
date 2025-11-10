@@ -1789,11 +1789,6 @@
             
             console.log('🔍 Values:', { type, instrument });
             
-            // If editing an existing trade and expression changed, auto-update trade object
-            if (currentTradeId && instrument) {
-                autoUpdateTradeExpression();
-            }
-            
             // Fetch live rates for swaps and futures with valid instrument syntax
             if ((type === 'swap' || type === 'future') && instrument) {
                 console.log(`🔄 Fetching ${type} live rate for:`, instrument);
@@ -2088,19 +2083,20 @@
             }
             
             // For non-EFP trades, use primary positions as entry positions
-            // For EFP trades, we need to send both primary and secondary positions
-            let entryPositions, exitPositions;
+            // For EFP trades, send separate arrays for primary and secondary positions
+            let entryPositions, exitPositions, entryPositionsSecondary;
             
             if (primaryType === 'efp' && secondaryPositions.length > 0) {
-                // EFP: Combine both position sets
-                // Primary positions (swap) go to index 0
-                // Secondary positions (futures) go to index 1
-                entryPositions = [...primaryPositions, ...secondaryPositions];
+                // EFP: Send separate arrays for primary (swap) and secondary (futures) positions
+                entryPositions = primaryPositions;
+                entryPositionsSecondary = secondaryPositions;
                 exitPositions = [];
-                console.log('📊 EFP trade: Combined positions:', entryPositions);
+                console.log('📊 EFP trade: Primary positions:', entryPositions);
+                console.log('📊 EFP trade: Secondary positions:', entryPositionsSecondary);
             } else {
                 // Non-EFP: Use primary positions only
                 entryPositions = primaryPositions;
+                entryPositionsSecondary = null;
                 exitPositions = [];
                 console.log('📊 Non-EFP trade: Using primary positions only:', entryPositions);
             }
@@ -2119,6 +2115,13 @@
                     exit_prices: exitPositions.map(p => p.price),
                     exit_sizes: exitPositions.map(p => p.size)
                 };
+                
+                // Add secondary positions for EFP trades
+                if (entryPositionsSecondary && entryPositionsSecondary.length > 0) {
+                    updateData.entry_prices_secondary = entryPositionsSecondary.map(p => p.price);
+                    updateData.entry_sizes_secondary = entryPositionsSecondary.map(p => p.size);
+                    console.log('📊 Including secondary positions:', updateData.entry_prices_secondary, updateData.entry_sizes_secondary);
+                }
                 
                 fetch('/update_trade', {
                     method: 'POST',
@@ -2193,6 +2196,13 @@
                     exit_prices: exitPositions.map(p => p.price),
                     exit_sizes: exitPositions.map(p => p.size)
                 };
+                
+                // Add secondary positions for EFP trades
+                if (entryPositionsSecondary && entryPositionsSecondary.length > 0) {
+                    submitData.entry_prices_secondary = entryPositionsSecondary.map(p => p.price);
+                    submitData.entry_sizes_secondary = entryPositionsSecondary.map(p => p.size);
+                    console.log('📊 Including secondary positions:', submitData.entry_prices_secondary, submitData.entry_sizes_secondary);
+                }
                 
                 fetch('/add_trade', {
                     method: 'POST',
@@ -2507,44 +2517,65 @@
                         // EFP trade: Load primary (swap) positions from prices/sizes
                         console.log(`📊 EFP trade detected, loading ${prices.length} primary and ${prices_secondary.length} secondary positions`);
                         
-                        // Load primary (swap) positions
-                        prices.forEach((price, index) => {
-                            if (sizes[index] !== undefined) {
-                                console.log(`➕ Adding PRIMARY position ${index + 1}`);
-                                addPosition('primary');
-                                
-                                // Wait a moment for the row to be added to DOM
-                                setTimeout(() => {
-                                    const lastRow = positionsTableBody.lastElementChild;
-                                    if (!lastRow) {
-                                        console.error('❌ No row found after addPosition');
-                                        return;
-                                    }
-                                    
-                                    const priceInput = lastRow.querySelector('[data-position-price]');
-                                    if (priceInput) {
-                                        priceInput.value = price.toFixed(2);
-                                    }
-                                    
-                                    const sizeValue = sizes[index];
-                                    if (Array.isArray(sizeValue)) {
-                                        const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
-                                        sizeInputs.forEach((input, componentIndex) => {
-                                            if (componentIndex < sizeValue.length) {
-                                                input.value = sizeValue[componentIndex];
-                                            }
-                                        });
-                                        console.log(`✅ Loaded PRIMARY position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
-                                    } else {
-                                        const sizeInput = lastRow.querySelector('[data-position-size]');
-                                        if (sizeInput) {
-                                            sizeInput.value = sizeValue;
-                                        }
-                                        console.log(`✅ Loaded PRIMARY position ${index + 1}: price=${price}, size=${sizeValue}`);
-                                    }
-                                }, 50 * index); // Stagger the additions
+                        // Load primary (swap) positions - ONE AT A TIME with proper sequencing
+                        const loadPrimaryPosition = (index) => {
+                            if (index >= prices.length || sizes[index] === undefined) {
+                                return; // Done loading all positions
                             }
-                        });
+                            
+                            console.log(`➕ Adding PRIMARY position ${index + 1}`);
+                            addPosition('primary');
+                            
+                            // Wait for DOM to update, then populate THIS position
+                            setTimeout(() => {
+                                const allRows = positionsTableBody.querySelectorAll('tr');
+                                const thisRow = allRows[index]; // Get the row at this index
+                                
+                                if (!thisRow) {
+                                    console.error(`❌ No row found at index ${index}`);
+                                    loadPrimaryPosition(index + 1); // Try next position anyway
+                                    return;
+                                }
+                                
+                                const price = prices[index];
+                                const sizeValue = sizes[index];
+                                
+                                const priceInput = thisRow.querySelector('[data-position-price]');
+                                if (priceInput) {
+                                    priceInput.value = price.toFixed(2);
+                                }
+                                
+                                if (Array.isArray(sizeValue)) {
+                                    const sizeInputs = thisRow.querySelectorAll('[data-position-size]');
+                                    sizeInputs.forEach((input, componentIndex) => {
+                                        if (componentIndex < sizeValue.length) {
+                                            input.value = sizeValue[componentIndex];
+                                        }
+                                    });
+                                    console.log(`✅ Loaded PRIMARY position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
+                                } else {
+                                    const sizeInput = thisRow.querySelector('[data-position-size]');
+                                    if (sizeInput) {
+                                        sizeInput.value = sizeValue;
+                                    }
+                                    console.log(`✅ Loaded PRIMARY position ${index + 1}: price=${price}, size=${sizeValue}`);
+                                }
+                                
+                                // TRIGGER P&L calculation for this position after loading
+                                setTimeout(() => {
+                                    if (priceInput) {
+                                        console.log(`💰 Triggering P&L calculation for PRIMARY position ${index + 1}`);
+                                        calculatePnL(priceInput);
+                                    }
+                                }, 100);
+                                
+                                // Load next position
+                                loadPrimaryPosition(index + 1);
+                            }, 50); // Wait for DOM update
+                        };
+                        
+                        // Start loading from position 0
+                        loadPrimaryPosition(0);
                         
                         // Load secondary (futures) positions from prices_secondary/sizes_secondary
                         // CRITICAL: Wait for primary positions to finish AND for secondary instrument to be set
@@ -2557,67 +2588,104 @@
                             const secondaryInstrumentInput = secondaryRow?.querySelector('.modal-instrument-secondary');
                             console.log('🔍 Pre-position check - Secondary instrument value:', secondaryInstrumentInput?.value);
                             
-                            prices_secondary.forEach((price, index) => {
-                                if (sizes_secondary[index] !== undefined) {
-                                    console.log(`➕ Adding SECONDARY position ${index + 1} with delay`);
-                                    
-                                    setTimeout(() => {
-                                        console.log(`🔧 Actually adding SECONDARY position ${index + 1} now`);
-                                        addPosition('secondary');
-                                        
-                                        // Wait for DOM update
-                                        setTimeout(() => {
-                                            const lastRow = secondaryPositionsTableBody.lastElementChild;
-                                            if (!lastRow) {
-                                                console.error('❌ No secondary row found after addPosition');
-                                                return;
-                                            }
-                                            
-                                            const priceInput = lastRow.querySelector('[data-position-price]');
-                                            if (priceInput) {
-                                                priceInput.value = price.toFixed(2);
-                                                console.log(`  📝 Set price to ${price}`);
-                                            }
-                                            
-                                            const sizeValue = sizes_secondary[index];
-                                            if (Array.isArray(sizeValue)) {
-                                                const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
-                                                console.log(`  🔍 Found ${sizeInputs.length} size inputs for array value`);
-                                                sizeInputs.forEach((input, componentIndex) => {
-                                                    if (componentIndex < sizeValue.length) {
-                                                        input.value = sizeValue[componentIndex];
-                                                        console.log(`    Component ${componentIndex}: ${sizeValue[componentIndex]}`);
-                                                    }
-                                                });
-                                                console.log(`✅ Loaded SECONDARY position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
-                                            } else {
-                                                const sizeInput = lastRow.querySelector('[data-position-size]');
-                                                if (sizeInput) {
-                                                    sizeInput.value = sizeValue;
-                                                    console.log(`  📝 Set size to ${sizeValue}`);
-                                                }
-                                                console.log(`✅ Loaded SECONDARY position ${index + 1}: price=${price}, size=${sizeValue}`);
-                                            }
-                                        }, 100); // Give DOM time to update
-                                    }, index * 100); // Stagger each position
+                            // Load secondary (futures) positions - ONE AT A TIME with proper sequencing
+                            const loadSecondaryPosition = (index) => {
+                                if (index >= prices_secondary.length || sizes_secondary[index] === undefined) {
+                                    return; // Done loading all secondary positions
                                 }
-                            });
+                                
+                                console.log(`➕ Adding SECONDARY position ${index + 1}`);
+                                addPosition('secondary');
+                                
+                                // Wait for DOM to update, then populate THIS position
+                                setTimeout(() => {
+                                    const allRows = secondaryPositionsTableBody.querySelectorAll('tr');
+                                    const thisRow = allRows[index]; // Get the row at this index
+                                    
+                                    if (!thisRow) {
+                                        console.error(`❌ No secondary row found at index ${index}`);
+                                        loadSecondaryPosition(index + 1); // Try next position anyway
+                                        return;
+                                    }
+                                    
+                                    const price = prices_secondary[index];
+                                    const sizeValue = sizes_secondary[index];
+                                    
+                                    const priceInput = thisRow.querySelector('[data-position-price]');
+                                    if (priceInput) {
+                                        priceInput.value = price.toFixed(2);
+                                        console.log(`  📝 Set price to ${price}`);
+                                    }
+                                    
+                                    if (Array.isArray(sizeValue)) {
+                                        const sizeInputs = thisRow.querySelectorAll('[data-position-size]');
+                                        console.log(`  🔍 Found ${sizeInputs.length} size inputs for array value`);
+                                        sizeInputs.forEach((input, componentIndex) => {
+                                            if (componentIndex < sizeValue.length) {
+                                                input.value = sizeValue[componentIndex];
+                                                console.log(`    Component ${componentIndex}: ${sizeValue[componentIndex]}`);
+                                            }
+                                        });
+                                        console.log(`✅ Loaded SECONDARY position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
+                                    } else {
+                                        const sizeInput = thisRow.querySelector('[data-position-size]');
+                                        if (sizeInput) {
+                                            sizeInput.value = sizeValue;
+                                            console.log(`  📝 Set size to ${sizeValue}`);
+                                        }
+                                        console.log(`✅ Loaded SECONDARY position ${index + 1}: price=${price}, size=${sizeValue}`);
+                                    }
+                                    
+                                    // TRIGGER P&L calculation for this SECONDARY position after loading
+                                    setTimeout(() => {
+                                        if (priceInput) {
+                                            console.log(`💰 Triggering P&L calculation for SECONDARY position ${index + 1}`);
+                                            calculatePnL(priceInput);
+                                        }
+                                    }, 300); // Wait longer for futures live rates to be available
+                                    
+                                    // Load next secondary position
+                                    loadSecondaryPosition(index + 1);
+                                }, 100); // Wait for DOM update
+                            };
+                            
+                            // Start loading secondary positions from index 0
+                            loadSecondaryPosition(0);
                         }, secondaryDelay);
                         
                     } else {
-                        // Non-EFP trade: load all positions into primary table
+                        // Non-EFP trade: load all positions into primary table - ONE AT A TIME with proper sequencing
                         console.log(`📊 Non-EFP trade, loading all ${prices.length} positions into primary table`);
                         
-                        prices.forEach((price, index) => {
-                            if (sizes[index] !== undefined) {
-                                addPosition('primary');
-                                const lastRow = positionsTableBody.lastElementChild;
+                        const loadNonEFPPosition = (index) => {
+                            if (index >= prices.length || sizes[index] === undefined) {
+                                return; // Done loading all positions
+                            }
+                            
+                            console.log(`➕ Adding NON-EFP position ${index + 1}`);
+                            addPosition('primary');
+                            
+                            // Wait for DOM to update
+                            setTimeout(() => {
+                                const allRows = positionsTableBody.querySelectorAll('tr');
+                                const thisRow = allRows[index]; // Get the row at this index
                                 
-                                lastRow.querySelector('[data-position-price]').value = price.toFixed(2);
+                                if (!thisRow) {
+                                    console.error(`❌ No row found at index ${index}`);
+                                    loadNonEFPPosition(index + 1); // Try next position anyway
+                                    return;
+                                }
                                 
+                                const price = prices[index];
                                 const sizeValue = sizes[index];
+                                
+                                const priceInput = thisRow.querySelector('[data-position-price]');
+                                if (priceInput) {
+                                    priceInput.value = price.toFixed(2);
+                                }
+                                
                                 if (Array.isArray(sizeValue)) {
-                                    const sizeInputs = lastRow.querySelectorAll('[data-position-size]');
+                                    const sizeInputs = thisRow.querySelectorAll('[data-position-size]');
                                     console.log(`📊 Loading array size with ${sizeValue.length} components into ${sizeInputs.length} inputs`);
                                     
                                     sizeInputs.forEach((input, componentIndex) => {
@@ -2629,15 +2697,21 @@
                                     
                                     console.log(`✅ Loaded position ${index + 1}: price=${price}, sizes=${JSON.stringify(sizeValue)}`);
                                 } else {
-                                    const sizeInput = lastRow.querySelector('[data-position-size]');
+                                    const sizeInput = thisRow.querySelector('[data-position-size]');
                                     if (sizeInput) {
                                         sizeInput.value = sizeValue;
                                     }
                                     
                                     console.log(`✅ Loaded position ${index + 1}: price=${price}, size=${sizeValue}`);
                                 }
-                            }
-                        });
+                                
+                                // Load next position
+                                loadNonEFPPosition(index + 1);
+                            }, 50); // Wait for DOM update
+                        };
+                        
+                        // Start loading from position 0
+                        loadNonEFPPosition(0);
                     }
                     
                     // Note: Exit positions are no longer supported in the simplified interface
@@ -2649,18 +2723,63 @@
                     setTimeout(() => {
                         setupAutoUpdateListeners();
                         
-                        // Trigger live rate updates for all loaded instruments
-                        const basicInfoRows = document.querySelectorAll('#basicInfoTableBody tr');
+                        // Trigger live rate updates for all loaded instruments - PRIMARY rows only
+                        const basicInfoRows = document.querySelectorAll('#basicInfoTableBody tr:not(#secondaryInstrumentRow)');
                         basicInfoRows.forEach(row => {
                             const typeSelect = row.querySelector('.modal-trade-type');
                             const instrumentInput = row.querySelector('.modal-instrument');
                             
                             if (typeSelect && instrumentInput && 
                                 typeSelect.value.trim() && instrumentInput.value.trim()) {
-                                console.log('🔄 Auto-updating live rate for loaded trade:', instrumentInput.value);
+                                console.log('🔄 Auto-updating PRIMARY live rate for loaded trade:', instrumentInput.value);
                                 updateLiveRate(instrumentInput);
                             }
                         });
+                        
+                        // Separately trigger update for secondary instrument row if it's an EFP trade
+                        const secondaryRow = document.getElementById('secondaryInstrumentRow');
+                        if (secondaryRow && secondaryRow.style.display !== 'none') {
+                            const secondaryInstrumentInput = secondaryRow.querySelector('.modal-instrument-secondary');
+                            if (secondaryInstrumentInput && secondaryInstrumentInput.value.trim()) {
+                                console.log('🔄 Auto-updating SECONDARY (futures) live rate for EFP trade:', secondaryInstrumentInput.value);
+                                updateLiveRate(secondaryInstrumentInput);
+                            }
+                        }
+                        
+                        // CRITICAL: After live rates are fetched, trigger P&L calculations for all loaded positions
+                        setTimeout(() => {
+                            console.log('💰 Triggering P&L calculations for all loaded positions...');
+                            
+                            // Calculate P&L for all PRIMARY positions
+                            const primaryPositionRows = document.querySelectorAll('#positionsTableBody tr');
+                            primaryPositionRows.forEach((row, index) => {
+                                const priceInput = row.querySelector('[data-position-price]');
+                                const sizeInputs = row.querySelectorAll('[data-position-size]');
+                                
+                                if (priceInput && priceInput.value && sizeInputs.length > 0) {
+                                    const hasSize = Array.from(sizeInputs).some(input => input.value);
+                                    if (hasSize) {
+                                        console.log(`💰 Calculating P&L for PRIMARY position ${index + 1}`);
+                                        calculatePnL(priceInput);
+                                    }
+                                }
+                            });
+                            
+                            // Calculate P&L for all SECONDARY positions (EFP futures)
+                            const secondaryPositionRows = document.querySelectorAll('#secondaryPositionsTableBody tr');
+                            secondaryPositionRows.forEach((row, index) => {
+                                const priceInput = row.querySelector('[data-position-price]');
+                                const sizeInputs = row.querySelectorAll('[data-position-size]');
+                                
+                                if (priceInput && priceInput.value && sizeInputs.length > 0) {
+                                    const hasSize = Array.from(sizeInputs).some(input => input.value);
+                                    if (hasSize) {
+                                        console.log(`💰 Calculating P&L for SECONDARY position ${index + 1}`);
+                                        calculatePnL(priceInput);
+                                    }
+                                }
+                            });
+                        }, 800); // Wait 800ms for live rates to be fully loaded
                     }, 200);
                     
                 } else {
@@ -2811,121 +2930,6 @@
                 console.error('❌ Network error loading trades:', error);
                 alert('Network error loading trades: ' + error.message);
             });
-        }
-        
-        // Function to auto-update trade expression and recalculate P&L when expression changes
-        function autoUpdateTradeExpression() {
-            if (!currentTradeId) {
-                console.log('⚠️ No currentTradeId, skipping auto-update');
-                return;
-            }
-            
-            console.log('🔄 Auto-updating trade expression for:', currentTradeId);
-            
-            // Debounce to avoid too many updates
-            clearTimeout(window.expressionUpdateTimeout);
-            window.expressionUpdateTimeout = setTimeout(() => {
-                // Collect current expression data from modal
-                const basicInfoRows = document.getElementById('basicInfoTableBody').querySelectorAll('tr');
-                const typologies = [];
-                const instruments = [];
-                
-                basicInfoRows.forEach(row => {
-                    const tradeTypeSelect = row.querySelector('select.modal-trade-type');
-                    const instrumentInput = row.querySelector('input.modal-instrument');
-                    
-                    if (tradeTypeSelect && instrumentInput) {
-                        const tradeType = tradeTypeSelect.value.trim();
-                        const instrument = instrumentInput.value.trim();
-                        
-                        if (tradeType && instrument) {
-                            typologies.push(tradeType);
-                            instruments.push(instrument);
-                        }
-                    }
-                });
-                
-                // Collect positions (keep existing positions)
-                const positions = [];
-                const positionRows = document.getElementById('positionsTableBody').querySelectorAll('tr');
-                
-                positionRows.forEach(row => {
-                    const priceInput = row.querySelector('[data-position-price]');
-                    const sizeInput = row.querySelector('[data-position-size]');
-                    
-                    const price = priceInput ? priceInput.value.trim() : '';
-                    const size = sizeInput ? sizeInput.value.trim() : '';
-                    
-                    if (price && size) {
-                        // Use price exactly as entered (no conversion)
-                        positions.push({
-                            price: parseFloat(price),
-                            size: parseFloat(size)
-                        });
-                    }
-                });
-                
-                // Update backend trade object with new expression
-                const updateData = {
-                    trade_id: currentTradeId,
-                    typologies: typologies,
-                    instruments: instruments,
-                    entry_prices: positions.map(p => p.price),
-                    entry_sizes: positions.map(p => p.size),
-                    exit_prices: [],
-                    exit_sizes: []
-                };
-                
-                console.log('📤 Sending auto-update to backend:', updateData);
-                
-                fetch('/update_trade', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updateData)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        console.log('✅ Trade expression auto-updated successfully');
-                        
-                        // Auto-update P&L after expression change if curves exist
-                        fetch('/curves_status')
-                        .then(response => response.json())
-                        .then(curveData => {
-                            if (curveData.loaded) {
-                                console.log('✅ Curves exist, auto-recalculating P&L after expression change...');
-                                
-                                fetch('/update_realtime_pnl', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
-                                })
-                                .then(response => response.json())
-                                .then(pnlData => {
-                                    if (pnlData.success) {
-                                        console.log('✅ P&L recalculated after expression change');
-                                        // Update modal display with new P&L
-                                        updateModalPnLDisplay();
-                                    }
-                                })
-                                .catch(error => {
-                                    console.error('❌ Error recalculating P&L:', error);
-                                });
-                            } else {
-                                console.log('📊 No curves, skipping P&L recalculation');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('❌ Error checking curves:', error);
-                        });
-                    } else {
-                        console.error('❌ Failed to auto-update trade expression:', data.error);
-                    }
-                })
-                .catch(error => {
-                    console.error('❌ Network error auto-updating trade:', error);
-                });
-                
-            }, 1000); // Wait 1 second after last change before updating
         }
         
         // Function to update P&L display in modal after recalculation
