@@ -996,16 +996,19 @@ def add_trade():
         entry_prices = data.get('entry_prices', data.get('prices', []))
         entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
-        # For EFP trades, split positions into primary (swap) and secondary (futures)
-        is_efp = primary_typology == 'efp' and len(typologies) >= 2
+        # NEW: Get separate secondary arrays for EFP trades
+        entry_prices_secondary = data.get('entry_prices_secondary', [])
+        entry_sizes_secondary = data.get('entry_sizes_secondary', [])
         
-        if is_efp:
-            # Split positions - frontend sends them combined with primary first, then secondary
-            # Determine split point (could be based on number of typologies, or divide evenly)
-            split_point = len(entry_prices) // 2  # Assume equal split for now
+        # For EFP trades, use separate arrays if provided
+        is_efp = primary_typology == 'efp' and secondary_typology
+        
+        if is_efp and (entry_prices_secondary or entry_sizes_secondary):
+            # EFP with separate arrays - use them directly
+            print(f"✅ EFP trade with separate arrays: {len(entry_prices)} primary, {len(entry_prices_secondary)} secondary")
             
             # Primary positions (swap leg)
-            for price, size in zip(entry_prices[:split_point], entry_sizes[:split_point]):
+            for price, size in zip(entry_prices, entry_sizes):
                 if price and size:
                     trade.prices.append(float(price))
                     if isinstance(size, list):
@@ -1014,15 +1017,13 @@ def add_trade():
                         trade.sizes.append(float(size))
             
             # Secondary positions (futures leg)
-            for price, size in zip(entry_prices[split_point:], entry_sizes[split_point:]):
+            for price, size in zip(entry_prices_secondary, entry_sizes_secondary):
                 if price and size:
                     trade.prices_secondary.append(float(price))
                     if isinstance(size, list):
                         trade.sizes_secondary.append(size)
                     else:
                         trade.sizes_secondary.append(float(size))
-            
-            print(f"✅ EFP trade split: {len(trade.prices)} primary, {len(trade.prices_secondary)} secondary positions")
         else:
             # Non-EFP trade - store all in primary arrays
             for price, size in zip(entry_prices, entry_sizes):
@@ -1149,21 +1150,25 @@ def update_trade():
         entry_prices = data.get('entry_prices', data.get('prices', []))
         entry_sizes = data.get('entry_sizes', data.get('sizes', []))
         
-        # Check if this is an EFP trade that needs position splitting
+        # NEW: Get separate secondary arrays for EFP trades
+        entry_prices_secondary = data.get('entry_prices_secondary', [])
+        entry_sizes_secondary = data.get('entry_sizes_secondary', [])
+        
+        # Check if this is an EFP trade that needs separate position handling
         is_efp = trade.typology == 'efp' and trade.secondary_typology
         
-        if is_efp:
+        if is_efp and (entry_prices_secondary or entry_sizes_secondary):
+            # EFP with separate arrays
+            print(f"✅ Updating EFP trade with separate arrays: {len(entry_prices)} primary, {len(entry_prices_secondary)} secondary")
+            
             # Clear existing arrays
             trade.prices = []
             trade.sizes = []
             trade.prices_secondary = []
             trade.sizes_secondary = []
             
-            # Split positions - frontend sends them combined with primary first, then secondary
-            split_point = len(entry_prices) // 2  # Assume equal split
-            
             # Primary positions (swap leg)
-            for price, size in zip(entry_prices[:split_point], entry_sizes[:split_point]):
+            for price, size in zip(entry_prices, entry_sizes):
                 if price and size:
                     trade.prices.append(float(price))
                     if isinstance(size, list):
@@ -1172,15 +1177,13 @@ def update_trade():
                         trade.sizes.append(float(size))
             
             # Secondary positions (futures leg)
-            for price, size in zip(entry_prices[split_point:], entry_sizes[split_point:]):
+            for price, size in zip(entry_prices_secondary, entry_sizes_secondary):
                 if price and size:
                     trade.prices_secondary.append(float(price))
                     if isinstance(size, list):
                         trade.sizes_secondary.append(size)
                     else:
                         trade.sizes_secondary.append(float(size))
-            
-            print(f"✅ EFP trade updated: {len(trade.prices)} primary, {len(trade.prices_secondary)} secondary positions")
         else:
             # Non-EFP trade - store all in primary arrays
             trade.prices = [float(p) for p in entry_prices if p]
