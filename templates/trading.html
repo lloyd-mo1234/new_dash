@@ -1273,57 +1273,148 @@
                 setTimeout(() => {
                     addPosition('entry'); // Start with one entry position
                     setupAutoUpdateListeners();
+                    
+                    // CRITICAL: Set up change listener for type select to ensure it fires
+                    attachTypeChangeListener();
                 }, 50);
             }
         }
         
+        // Wrapper function to ensure handleTypeChange is called
+        function handleTypeChangeWrapper(event) {
+            console.log('🔔 Type select changed via event listener:', event.target.value);
+            handleTypeChange(event.target);
+        }
+        
+        // Function to attach type change listener (called after modal opens or clears)
+        function attachTypeChangeListener() {
+            const typeSelect = document.getElementById('singleTradeType');
+            if (typeSelect) {
+                // Remove any existing listeners first to avoid duplicates
+                typeSelect.removeEventListener('change', handleTypeChangeWrapper);
+                // Add fresh listener
+                typeSelect.addEventListener('change', handleTypeChangeWrapper);
+                console.log('✅ Type select listener attached');
+            } else {
+                console.error('❌ Type select element not found');
+            }
+        }
+        
         function clearModalForm() {
-            // Clear basic info table - keep only the first row
-            const tbody = document.getElementById('basicInfoTableBody');
-            const firstRow = tbody.querySelector('tr');
-            firstRow.querySelector('.modal-trade-type').value = '';
-            firstRow.querySelector('.modal-instrument').value = '';
+            console.log('🧹 Clearing modal form - resetting all state');
             
-            // Clear live rate display
-            const liveRateDisplay = firstRow.querySelector('.live-rate-display');
-            if (liveRateDisplay) {
-                liveRateDisplay.textContent = '--';
-                liveRateDisplay.style.color = '#cccccc';
+            // Get references to tbody and secondary row
+            const tbody = document.getElementById('basicInfoTableBody');
+            const secondaryRow = document.getElementById('secondaryInstrumentRow');
+            
+            // CRITICAL: Remove secondary row temporarily to preserve it during clearing
+            if (secondaryRow && secondaryRow.parentNode === tbody) {
+                tbody.removeChild(secondaryRow);
+                console.log('🔧 Temporarily removed secondary row from DOM');
             }
             
-            // Clear secondary row but keep it in the DOM (just hide it)
-            const secondaryRow = document.getElementById('secondaryInstrumentRow');
+            // Clear everything
+            tbody.innerHTML = '';
+            console.log('🧹 Cleared tbody content');
+            
+            // Create fresh first row
+            const firstRow = document.createElement('tr');
+            firstRow.innerHTML = `
+                <td>
+                    <select class="modal-trade-type" id="singleTradeType" onchange="handleTypeChange(this)" oninput="handleTypeChange(this)">
+                        <option value="">Select Type</option>
+                        <option value="swap">Swap</option>
+                        <option value="future">Future</option>
+                        <option value="fx">FX</option>
+                        <option value="efp">EFP</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="text" class="modal-instrument" id="singleInstrument" placeholder="e.g., aud.5y5y" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
+                </td>
+                <td>
+                    <span class="live-rate-display" id="singleLiveRate" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
+                </td>
+                <td>
+                    <span class="total-pnl-display" id="singleTotalPnL" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
+                </td>
+            `;
+            tbody.appendChild(firstRow);
+            console.log('✅ Added fresh first row');
+            
+            // CRITICAL: Re-add and reset the secondary row
             if (secondaryRow) {
-                secondaryRow.style.display = 'none';
+                // Clear all values in secondary row
                 const secondaryInput = secondaryRow.querySelector('.modal-instrument-secondary');
                 if (secondaryInput) {
                     secondaryInput.value = '';
                 }
+                
                 const secondaryLiveRate = secondaryRow.querySelector('.live-rate-display');
                 if (secondaryLiveRate) {
                     secondaryLiveRate.textContent = '--';
                     secondaryLiveRate.style.color = '#cccccc';
                 }
-            }
-            
-            // Remove any additional rows (but NOT the secondaryInstrumentRow)
-            const allRows = tbody.querySelectorAll('tr');
-            for (let i = 1; i < allRows.length; i++) {
-                // Skip the secondaryInstrumentRow - we want to keep it in the DOM
-                if (allRows[i].id !== 'secondaryInstrumentRow') {
-                    allRows[i].remove();
+                
+                const secondaryPnL = secondaryRow.querySelector('.total-pnl-display');
+                if (secondaryPnL) {
+                    secondaryPnL.textContent = '--';
+                    secondaryPnL.style.color = '#cccccc';
                 }
+                
+                // Reset display to none (hidden by default)
+                secondaryRow.style.display = 'none';
+                secondaryRow.style.visibility = '';
+                secondaryRow.style.opacity = '';
+                
+                // Re-add to tbody
+                tbody.appendChild(secondaryRow);
+                console.log('✅ Re-added and reset secondary row to DOM');
             }
             
-            document.getElementById('positionsTableBody').innerHTML = '';
+            // Clear all primary positions
+            const primaryPositionsBody = document.getElementById('positionsTableBody');
+            if (primaryPositionsBody) {
+                primaryPositionsBody.innerHTML = '';
+            }
+            
+            // Clear all secondary positions
+            const secondaryPositionsBody = document.getElementById('secondaryPositionsTableBody');
+            if (secondaryPositionsBody) {
+                secondaryPositionsBody.innerHTML = '';
+            }
+            
+            // Hide secondary positions section
+            const secondaryPositionsSection = document.getElementById('secondaryPositionsSection');
+            if (secondaryPositionsSection) {
+                secondaryPositionsSection.style.display = 'none';
+            }
+            
+            // Reset primary positions title
+            const primaryPositionsTitle = document.getElementById('primaryPositionsTitle');
+            if (primaryPositionsTitle) {
+                primaryPositionsTitle.textContent = 'Positions';
+            }
+            
+            // Reset position counter
             positionCounter = 0;
             
-            // Clear total P&L display in basic info table
-            const totalTradePnLElement = document.getElementById('singleTotalPnL');
-            if (totalTradePnLElement) {
-                totalTradePnLElement.textContent = '--';
-                totalTradePnLElement.style.color = '#cccccc';
+            // Clear cached futures data
+            cachedFuturesData = null;
+            
+            // Clear any pending timeouts
+            if (window.expressionUpdateTimeout) {
+                clearTimeout(window.expressionUpdateTimeout);
+                window.expressionUpdateTimeout = null;
             }
+            
+            console.log('✅ Modal form cleared completely');
+            
+            // CRITICAL: Re-attach event listener after clearing
+            // Use setTimeout to ensure DOM is ready
+            setTimeout(() => {
+                attachTypeChangeListener();
+            }, 10);
         }
         
         function addInstrumentLine() {
@@ -1579,25 +1670,60 @@
             const primaryPositionsTitle = document.getElementById('primaryPositionsTitle');
             const secondaryPositionsTableBody = document.getElementById('secondaryPositionsTableBody');
             
+            console.log('🔍 Elements found:', {
+                secondaryRow: !!secondaryRow,
+                secondaryPositionsSection: !!secondaryPositionsSection,
+                primaryPositionsTitle: !!primaryPositionsTitle,
+                secondaryPositionsTableBody: !!secondaryPositionsTableBody
+            });
+            
             if (selectElement.value === 'efp') {
-                // Show secondary instrument row and positions section for EFP
+                console.log('✅ EFP selected - showing secondary sections');
+                
+                // FORCE show secondary instrument row and positions section for EFP
                 if (secondaryRow) {
-                    secondaryRow.style.display = '';
-                    console.log('✅ Showing secondary instrument row for EFP');
-                }
-                if (secondaryPositionsSection) {
-                    secondaryPositionsSection.style.display = 'block';
-                }
-                if (primaryPositionsTitle) {
-                    primaryPositionsTitle.textContent = 'Swap Positions';
+                    secondaryRow.style.display = 'table-row';
+                    secondaryRow.style.visibility = 'visible';
+                    secondaryRow.style.opacity = '1';
+                    console.log('✅ Secondary row display set to:', secondaryRow.style.display);
+                } else {
+                    console.error('❌ Secondary row not found!');
                 }
                 
-                // Add a secondary position if table is empty
-                if (secondaryPositionsTableBody && secondaryPositionsTableBody.children.length === 0) {
-                    console.log('➕ Auto-adding first secondary position for EFP');
-                    addPosition('secondary');
+                if (secondaryPositionsSection) {
+                    secondaryPositionsSection.style.display = 'block';
+                    secondaryPositionsSection.style.visibility = 'visible';
+                    secondaryPositionsSection.style.opacity = '1';
+                    console.log('✅ Secondary positions section shown');
+                } else {
+                    console.error('❌ Secondary positions section not found!');
                 }
+                
+                if (primaryPositionsTitle) {
+                    primaryPositionsTitle.textContent = 'Swap Positions';
+                    console.log('✅ Primary positions title updated');
+                }
+                
+                // Clear any existing secondary positions first
+                if (secondaryPositionsTableBody) {
+                    secondaryPositionsTableBody.innerHTML = '';
+                    console.log('🧹 Cleared existing secondary positions before adding new one');
+                }
+                
+                // Add a secondary position - use setTimeout to ensure DOM is ready
+                setTimeout(() => {
+                    const tbody = document.getElementById('secondaryPositionsTableBody');
+                    if (tbody && tbody.children.length === 0) {
+                        console.log('➕ Auto-adding first secondary position for EFP');
+                        addPosition('secondary');
+                    } else {
+                        console.log(`📊 Secondary table already has ${tbody?.children.length || 0} positions`);
+                    }
+                }, 100); // Slightly longer delay
+                
             } else {
+                console.log('📊 Non-EFP selected - hiding secondary sections');
+                
                 // Hide secondary instrument row and positions section for non-EFP trades
                 if (secondaryRow) {
                     secondaryRow.style.display = 'none';
@@ -1608,7 +1734,6 @@
                 if (primaryPositionsTitle) {
                     primaryPositionsTitle.textContent = 'Positions';
                 }
-                console.log('📊 Hiding secondary instrument row and positions section for non-EFP');
                 
                 // Clear secondary positions when switching away from EFP
                 if (secondaryPositionsTableBody) {
@@ -2133,18 +2258,45 @@
             storedTrades.forEach(trade => {
                 const row = document.createElement('tr');
                 
-                // Determine P&L color
-                let pnlColor = '#00d4ff'; // Default aqua color
-                let pnlDisplay = trade.storedPnL || '--';
+                // Display single total P&L for all trade types
+                let pnlDisplay, pnlColor;
                 
-                if (pnlDisplay !== '--' && pnlDisplay !== 'No curves') {
-                    // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
-                    const pnlValue = parseFloat(pnlDisplay.replace(/[$,]/g, ''));
-                    if (!isNaN(pnlValue)) {
-                        if (pnlValue > 0) {
-                            pnlColor = '#51cf66'; // Green for profit
-                        } else if (pnlValue < 0) {
-                            pnlColor = '#ff6b6b'; // Red for loss
+                if (trade.type === 'efp' && (trade.storedPnLPrimary !== undefined || trade.storedPnLSecondary !== undefined)) {
+                    // EFP: Calculate total P&L from swap + futures
+                    const primaryPnL = trade.storedPnLPrimary !== undefined ? trade.storedPnLPrimary : 0;
+                    const secondaryPnL = trade.storedPnLSecondary !== undefined ? trade.storedPnLSecondary : 0;
+                    const totalPnL = primaryPnL + secondaryPnL;
+                    
+                    console.log(`💰 EFP Display - Primary: ${primaryPnL}, Secondary: ${secondaryPnL}, Total: ${totalPnL}`);
+                    
+                    // Format as currency
+                    pnlDisplay = `$${totalPnL.toLocaleString('en-US', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    })}`;
+                    
+                    // Determine color based on total P&L
+                    if (totalPnL > 0) {
+                        pnlColor = '#51cf66'; // Green for profit
+                    } else if (totalPnL < 0) {
+                        pnlColor = '#ff6b6b'; // Red for loss
+                    } else {
+                        pnlColor = '#00d4ff'; // Aqua for zero
+                    }
+                } else {
+                    // Non-EFP or single P&L
+                    pnlDisplay = trade.storedPnL || '--';
+                    pnlColor = '#00d4ff'; // Default aqua color
+                    
+                    if (pnlDisplay !== '--' && pnlDisplay !== 'No curves') {
+                        // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
+                        const pnlValue = parseFloat(pnlDisplay.replace(/[$,]/g, ''));
+                        if (!isNaN(pnlValue)) {
+                            if (pnlValue > 0) {
+                                pnlColor = '#51cf66'; // Green for profit
+                            } else if (pnlValue < 0) {
+                                pnlColor = '#ff6b6b'; // Red for loss
+                            }
                         }
                     }
                 }
@@ -2155,7 +2307,7 @@
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.instrument}</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.avgEntry.toFixed(2)}%</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor};" class="pnl-cell">${pnlDisplay}</td>
+                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor}; font-size: 11px;" class="pnl-cell">${pnlDisplay}</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                     <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
@@ -2225,6 +2377,13 @@
                     // Clear the rest
                     tbody.innerHTML = '';
                     
+                    // Re-add the secondaryInstrumentRow back to the tbody FIRST, before creating rows
+                    // This ensures it's in the DOM when handleTypeChange is called
+                    if (secondaryRow) {
+                        tbody.appendChild(secondaryRow);
+                        console.log('✅ Re-added secondaryRow to DOM before processing rows');
+                    }
+                    
                     // Get the typologies and instruments arrays
                     const typologies = Array.isArray(trade.typology) ? trade.typology : [trade.typology];
                     const instruments = Array.isArray(trade.instrument_details) ? trade.instrument_details : [trade.instrument_details];
@@ -2259,7 +2418,12 @@
                             </td>
                         `;
                         
-                        tbody.appendChild(newRow);
+                        // Insert the new row BEFORE the secondaryRow (at index 0, before any secondary rows)
+                        if (secondaryRow && secondaryRow.parentNode === tbody) {
+                            tbody.insertBefore(newRow, secondaryRow);
+                        } else {
+                            tbody.appendChild(newRow);
+                        }
                         
                         // Set the values
                         const typeSelect = newRow.querySelector('.modal-trade-type');
@@ -2268,7 +2432,9 @@
                         if (i < typologies.length && typologies[i]) {
                             typeSelect.value = typologies[i];
                             // Trigger handleTypeChange for the first row to show secondary sections if EFP
+                            // Now secondaryRow is in the DOM, so this won't error
                             if (i === 0 && typologies[i] === 'efp') {
+                                console.log('🔄 Calling handleTypeChange for EFP during load');
                                 handleTypeChange(typeSelect);
                             }
                         }
@@ -2277,11 +2443,6 @@
                         }
                         
                         console.log(`✅ Row ${i + 1}: Type="${typeSelect.value}", Instrument="${instrumentInput.value}"`);
-                    }
-                    
-                    // Re-add the secondaryInstrumentRow back to the tbody
-                    if (secondaryRow) {
-                        tbody.appendChild(secondaryRow);
                     }
                     
                     // Clear positions BEFORE setting up EFP
@@ -2566,6 +2727,9 @@
                         // Calculate total entry size safely
                         const totalEntrySize = (backendTrade.entry_sizes || []).reduce((sum, size) => sum + (size || 0), 0);
                         
+                        // Get trade type
+                        const tradeType = Array.isArray(backendTrade.typology) ? backendTrade.typology[0] || '' : backendTrade.typology || '';
+                        
                         // Format stored P&L for display
                         let storedPnLDisplay = '--';
                         if (backendTrade.stored_pnl !== undefined && backendTrade.stored_pnl !== 0) {
@@ -2578,7 +2742,7 @@
                         
                         const trade = {
                             id: backendTrade.trade_id,
-                            type: Array.isArray(backendTrade.typology) ? backendTrade.typology[0] || '' : backendTrade.typology || '',
+                            type: tradeType,
                             identifier: backendTrade.trade_id,
                             instrument: Array.isArray(backendTrade.instrument_details) ? backendTrade.instrument_details[0] || '' : backendTrade.instrument_details || '',
                             positions: [],
@@ -2586,6 +2750,21 @@
                             totalSize: totalEntrySize,
                             storedPnL: storedPnLDisplay
                         };
+                        
+                // For EFP trades, also extract separate P&L values
+                if (tradeType === 'efp') {
+                    // Store primary (swap) P&L - always set, even if 0
+                    if (backendTrade.stored_pnl_primary !== undefined) {
+                        trade.storedPnLPrimary = backendTrade.stored_pnl_primary;
+                    }
+                    
+                    // Store secondary (futures) P&L - always set, even if 0
+                    if (backendTrade.stored_pnl_secondary !== undefined) {
+                        trade.storedPnLSecondary = backendTrade.stored_pnl_secondary;
+                    }
+                    
+                    console.log(`💰 EFP P&L - Primary: ${trade.storedPnLPrimary || 0}, Secondary: ${trade.storedPnLSecondary || 0}`);
+                }
                         
                         // Add entry positions
                         (backendTrade.entry_prices || []).forEach((price, index) => {
@@ -2761,24 +2940,49 @@
                     const tradeTypeSelect = basicInfoRow?.querySelector('.modal-trade-type');
                     const tradeType = tradeTypeSelect?.value.trim() || 'swap';
                     
-                    // Update individual position P&Ls by recalculating them
+                    console.log('🔄 Recalculating P&L for each position with updated expression...');
+                    
+                    // Update PRIMARY position P&Ls
                     const positionRows = document.querySelectorAll('#positionsTableBody tr');
                     const instrumentInput = basicInfoRow?.querySelector('.modal-instrument');
                     const instrument = instrumentInput?.value.trim();
                     
-                    console.log('🔄 Recalculating P&L for each position with updated expression...');
-                    
-                    // Trigger P&L calculation for each position
+                    // Trigger P&L calculation for each primary position
                     positionRows.forEach((row, index) => {
                         const priceInput = row.querySelector('[data-position-price]');
                         const sizeInput = row.querySelector('[data-position-size]');
                         
                         if (priceInput && sizeInput && priceInput.value && sizeInput.value) {
-                            console.log(`🔄 Recalculating P&L for position ${index + 1}`);
+                            console.log(`🔄 Recalculating P&L for PRIMARY position ${index + 1}`);
                             // Trigger the P&L calculation which will update the display
                             calculatePnL(priceInput);
                         }
                     });
+                    
+                    // Update SECONDARY position P&Ls (for EFP trades)
+                    if (tradeType === 'efp') {
+                        const secondaryPositionRows = document.querySelectorAll('#secondaryPositionsTableBody tr');
+                        
+                        console.log(`🔄 Found ${secondaryPositionRows.length} SECONDARY positions to recalculate`);
+                        
+                        secondaryPositionRows.forEach((row, index) => {
+                            const priceInput = row.querySelector('[data-position-price]');
+                            const sizeInputs = row.querySelectorAll('[data-position-size]');
+                            
+                            // Check if we have valid data
+                            let hasValidData = priceInput && priceInput.value;
+                            if (hasValidData && sizeInputs.length > 0) {
+                                // Check if at least one size input has a value
+                                hasValidData = Array.from(sizeInputs).some(input => input.value);
+                            }
+                            
+                            if (hasValidData) {
+                                console.log(`🔄 Recalculating P&L for SECONDARY position ${index + 1}`);
+                                // Trigger the P&L calculation which will update the display
+                                calculatePnL(priceInput);
+                            }
+                        });
+                    }
                     
                     // Update total P&L display in modal
                     const totalTradePnLElements = document.querySelectorAll('.total-pnl-display');
@@ -3278,12 +3482,13 @@
         function updateTotalTradePnL() {
             console.log('🧮 Updating total trade P&L...');
             
-            const positionRows = document.querySelectorAll('#positionsTableBody tr');
-            let totalPnL = 0;
-            let positionCount = 0;
-            let hasValidPnL = false;
+            // Calculate PRIMARY (swap) P&L
+            const primaryPositionRows = document.querySelectorAll('#positionsTableBody tr');
+            let primaryTotalPnL = 0;
+            let primaryPositionCount = 0;
+            let hasValidPrimaryPnL = false;
             
-            positionRows.forEach(row => {
+            primaryPositionRows.forEach(row => {
                 const pnlDisplay = row.querySelector('.pnl-display');
                 
                 if (pnlDisplay) {
@@ -3294,36 +3499,80 @@
                         const pnlValue = parseFloat(pnlText.replace(/[$,]/g, ''));
                         
                         if (!isNaN(pnlValue)) {
-                            hasValidPnL = true;
-                            totalPnL += pnlValue;
-                            positionCount++;
+                            hasValidPrimaryPnL = true;
+                            primaryTotalPnL += pnlValue;
+                            primaryPositionCount++;
                         }
                     }
                 }
             });
             
-            // Update ALL total P&L displays in the basic info table
-            const totalTradePnLElements = document.querySelectorAll('.total-pnl-display');
+            // Calculate SECONDARY (futures) P&L
+            const secondaryPositionRows = document.querySelectorAll('#secondaryPositionsTableBody tr');
+            let secondaryTotalPnL = 0;
+            let secondaryPositionCount = 0;
+            let hasValidSecondaryPnL = false;
             
-            totalTradePnLElements.forEach(element => {
-                if (hasValidPnL) {
-                    // Display calculated total P&L
-                    element.textContent = `$${totalPnL.toLocaleString('en-US', {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0
-                    })}`;
-                    element.style.color = totalPnL >= 0 ? '#51cf66' : '#ff6b6b';
-                } else {
-                    // No valid P&L data available
-                    element.textContent = '--';
-                    element.style.color = '#cccccc';
+            secondaryPositionRows.forEach(row => {
+                const pnlDisplay = row.querySelector('.pnl-display');
+                
+                if (pnlDisplay) {
+                    const pnlText = pnlDisplay.textContent.trim();
+                    
+                    // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
+                    if (pnlText && pnlText !== '--' && pnlText !== 'Error' && pnlText !== 'Calculating...' && pnlText !== 'No curves') {
+                        const pnlValue = parseFloat(pnlText.replace(/[$,]/g, ''));
+                        
+                        if (!isNaN(pnlValue)) {
+                            hasValidSecondaryPnL = true;
+                            secondaryTotalPnL += pnlValue;
+                            secondaryPositionCount++;
+                        }
+                    }
                 }
             });
             
-            console.log('✅ Total trade P&L updated for all rows:', {
-                totalPnL: totalPnL,
-                positionCount: positionCount,
-                elementsUpdated: totalTradePnLElements.length
+            // Update PRIMARY row total P&L (first row in basic info table)
+            const primaryRow = document.querySelector('#basicInfoTableBody tr:first-child');
+            if (primaryRow) {
+                const primaryPnLDisplay = primaryRow.querySelector('.total-pnl-display');
+                if (primaryPnLDisplay) {
+                    if (hasValidPrimaryPnL) {
+                        primaryPnLDisplay.textContent = `$${primaryTotalPnL.toLocaleString('en-US', {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        })}`;
+                        primaryPnLDisplay.style.color = primaryTotalPnL >= 0 ? '#51cf66' : '#ff6b6b';
+                    } else {
+                        primaryPnLDisplay.textContent = '--';
+                        primaryPnLDisplay.style.color = '#cccccc';
+                    }
+                }
+            }
+            
+            // Update SECONDARY row total P&L (futures row)
+            const secondaryRow = document.getElementById('secondaryInstrumentRow');
+            if (secondaryRow) {
+                const secondaryPnLDisplay = secondaryRow.querySelector('.total-pnl-display');
+                if (secondaryPnLDisplay) {
+                    if (hasValidSecondaryPnL) {
+                        secondaryPnLDisplay.textContent = `$${secondaryTotalPnL.toLocaleString('en-US', {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        })}`;
+                        secondaryPnLDisplay.style.color = secondaryTotalPnL >= 0 ? '#51cf66' : '#ff6b6b';
+                    } else {
+                        secondaryPnLDisplay.textContent = '--';
+                        secondaryPnLDisplay.style.color = '#cccccc';
+                    }
+                }
+            }
+            
+            console.log('✅ Total trade P&L updated:', {
+                primaryPnL: primaryTotalPnL,
+                primaryPositionCount: primaryPositionCount,
+                secondaryPnL: secondaryTotalPnL,
+                secondaryPositionCount: secondaryPositionCount
             });
         }
         

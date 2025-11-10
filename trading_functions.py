@@ -521,7 +521,7 @@ class Trade:
                         print(f"❌ Failed to create swap position {i}")
             
             # Create secondary positions (futures leg)
-            if self.instrument_details_secondary and self.secondary_typology == 'futures':
+            if self.instrument_details_secondary and self.secondary_typology in ['futures', 'future']:
                 instrument = self.instrument_details_secondary[0]
                 print(f"   Secondary (Futures) Instrument: {instrument}")
                 
@@ -612,6 +612,8 @@ class Trade:
         if self.positions or self.positions_secondary:
             # Use position-based P&L calculation
             total_pnl = 0.0
+            primary_pnl = 0.0  # Track primary (swap) P&L separately
+            secondary_pnl = 0.0  # Track secondary (futures) P&L separately
             position_pnls = []
             errors = []
             
@@ -628,6 +630,7 @@ class Trade:
                 pnl_error = pnl_result['error']
                 
                 total_pnl += pnl_value
+                primary_pnl += pnl_value  # Add to primary P&L
                 position_pnls.append({
                     'handle': position.handle,
                     'pnl': pnl_value,
@@ -652,6 +655,7 @@ class Trade:
                 pnl_error = pnl_result['error']
                 
                 total_pnl += pnl_value
+                secondary_pnl += pnl_value  # Add to secondary P&L
                 position_pnls.append({
                     'handle': position.handle,
                     'pnl': pnl_value,
@@ -667,6 +671,8 @@ class Trade:
                 "realized_pnl": 0.0,  # Position-based gives total P&L
                 "unrealized_pnl": total_pnl,
                 "total_pnl": total_pnl,
+                "primary_pnl": primary_pnl,  # Separate primary P&L
+                "secondary_pnl": secondary_pnl,  # Separate secondary P&L
                 "positions": position_pnls,
                 "method": "position_based",
                 "errors": errors if errors else None
@@ -677,6 +683,8 @@ class Trade:
                 "realized_pnl": 0.0,
                 "unrealized_pnl": 0.0,
                 "total_pnl": 0.0,
+                "primary_pnl": 0.0,
+                "secondary_pnl": 0.0,
                 "method": "no_positions"
             }
 
@@ -738,7 +746,10 @@ class Portfolio:
                     # Always include secondary attributes (empty lists if not present)
                     'prices_secondary': getattr(trade, 'prices_secondary', []),
                     'sizes_secondary': getattr(trade, 'sizes_secondary', []),
-                    'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', [])
+                    'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', []),
+                    # Include separate P&L values for EFP trades
+                    'stored_pnl_primary': getattr(trade, 'stored_pnl_primary', None),
+                    'stored_pnl_secondary': getattr(trade, 'stored_pnl_secondary', None)
                 }
                 
                 data['trades'][trade_id] = trade_data
@@ -879,12 +890,20 @@ class Portfolio:
                     futures_tick_data=futures_tick_data
                 )
                 
-                # Extract the PnL value
+                # Extract the PnL values
                 trade_pnl = pnl_result.get('total_pnl', 0.0)
+                primary_pnl = pnl_result.get('primary_pnl', 0.0)
+                secondary_pnl = pnl_result.get('secondary_pnl', 0.0)
                 
-                # Save PnL to the trade object
+                # Save P&L to the trade object
                 trade.stored_pnl = trade_pnl
                 trade.pnl_timestamp = current_timestamp
+                
+                # For EFP trades, also store separate P&L values
+                if trade.typology and 'efp' in [t.lower() for t in trade.typology]:
+                    trade.stored_pnl_primary = primary_pnl
+                    trade.stored_pnl_secondary = secondary_pnl
+                    print(f"💰 EFP P&L breakdown - Primary (swap): ${primary_pnl:,.2f}, Secondary (futures): ${secondary_pnl:,.2f}")
                 
                 # Add to total
                 total_pnl += trade_pnl
