@@ -1,7 +1,7 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-10T12:24:37.768950",
-    "total_portfolio_pnl": 3021917.069915725
+    "last_pnl_update": "2025-11-10T14:44:08.784073",
+    "total_portfolio_pnl": 3581208.508232251
   },
   "trades": {
     "trade1": {
@@ -11,65 +11,7 @@
       ],
       "secondary_typology": "futures",
       "prices": [
-        4.5
-      ],
-      "sizes": [
-        50.0
-      ],
-      "instrument_details": [
-        "aud.5y5y"
-      ],
-      "stored_pnl": -1383409.1170017393,
-      "pnl_timestamp": "2025-11-10T12:24:37.768950",
-      "prices_secondary": [
         96.0
-      ],
-      "sizes_secondary": [
-        100.0
-      ],
-      "instrument_details_secondary": [
-        "xmz5 comdty"
-      ],
-      "stored_pnl_primary": -1734837.1170017384,
-      "stored_pnl_secondary": 351427.999999999
-    },
-    "trade2": {
-      "trade_id": "trade2",
-      "typology": [
-        "efp"
-      ],
-      "secondary_typology": "futures",
-      "prices": [
-        1.0
-      ],
-      "sizes": [
-        100.0
-      ],
-      "instrument_details": [
-        "eur.2y2y.10y10y"
-      ],
-      "stored_pnl": 1645002.4209209147,
-      "pnl_timestamp": "2025-11-10T12:24:37.768950",
-      "prices_secondary": [
-        95.8
-      ],
-      "sizes_secondary": [
-        250.0
-      ],
-      "instrument_details_secondary": [
-        "xmz5 comdty"
-      ],
-      "stored_pnl_primary": 1197632.4209209234,
-      "stored_pnl_secondary": 447369.99999999144
-    },
-    "trade3": {
-      "trade_id": "trade3",
-      "typology": [
-        "efp"
-      ],
-      "secondary_typology": "futures",
-      "prices": [
-        5.0
       ],
       "sizes": [
         100.0
@@ -77,42 +19,19 @@
       "instrument_details": [
         "aud.5y5y"
       ],
-      "stored_pnl": 2408895.7659965507,
-      "pnl_timestamp": "2025-11-10T12:24:37.768950",
+      "stored_pnl": 3581208.508232251,
+      "pnl_timestamp": "2025-11-10T14:44:08.784073",
       "prices_secondary": [
         96.0
       ],
       "sizes_secondary": [
-        250.0
+        100.0
       ],
       "instrument_details_secondary": [
         "xmz5 comdty"
       ],
-      "stored_pnl_primary": 1530325.765996553,
-      "stored_pnl_secondary": 878569.9999999976
-    },
-    "trade4": {
-      "trade_id": "trade4",
-      "typology": [
-        "future"
-      ],
-      "secondary_typology": null,
-      "prices": [
-        96.0
-      ],
-      "sizes": [
-        100.0
-      ],
-      "instrument_details": [
-        "xmz5 comdty"
-      ],
-      "stored_pnl": 351427.999999999,
-      "pnl_timestamp": "2025-11-10T12:24:37.768950",
-      "prices_secondary": [],
-      "sizes_secondary": [],
-      "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null
+      "stored_pnl_primary": 3581208.508232251,
+      "stored_pnl_secondary": 0.0
     }
   }
 }

@@ -1710,16 +1710,21 @@
                     console.log('🧹 Cleared existing secondary positions before adding new one');
                 }
                 
-                // Add a secondary position - use setTimeout to ensure DOM is ready
-                setTimeout(() => {
-                    const tbody = document.getElementById('secondaryPositionsTableBody');
-                    if (tbody && tbody.children.length === 0) {
-                        console.log('➕ Auto-adding first secondary position for EFP');
-                        addPosition('secondary');
-                    } else {
-                        console.log(`📊 Secondary table already has ${tbody?.children.length || 0} positions`);
-                    }
-                }, 100); // Slightly longer delay
+                // Only auto-add a secondary position if this is a NEW trade (not editing)
+                // When editing, positions will be loaded from backend data
+                if (!currentTradeId) {
+                    setTimeout(() => {
+                        const tbody = document.getElementById('secondaryPositionsTableBody');
+                        if (tbody && tbody.children.length === 0) {
+                            console.log('➕ Auto-adding first secondary position for NEW EFP trade');
+                            addPosition('secondary');
+                        } else {
+                            console.log(`📊 Secondary table already has ${tbody?.children.length || 0} positions`);
+                        }
+                    }, 100);
+                } else {
+                    console.log('📝 Editing existing EFP trade - positions will be loaded from backend, not auto-adding empty position');
+                }
                 
             } else {
                 console.log('📊 Non-EFP selected - hiding secondary sections');
