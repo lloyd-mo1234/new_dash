@@ -1,7 +1,7 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-12T13:18:13.399452",
-    "total_portfolio_pnl": 235237065.0
+    "last_pnl_update": "2025-11-12T14:49:22.700351",
+    "total_portfolio_pnl": 235149930.0
   },
   "trades": {
     "trade1": {
@@ -19,13 +19,13 @@
       "instrument_details": [
         "xmz5 comdty"
       ],
-      "stored_pnl": 9468532.499999994,
-      "pnl_timestamp": "2025-11-12T13:18:13.399452",
+      "stored_pnl": 9474964.999999985,
+      "pnl_timestamp": "2025-11-12T14:49:22.700351",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null
+      "stored_pnl_primary": 0.0,
+      "stored_pnl_secondary": 0.0
     },
     "trade2": {
       "trade_id": "trade2",
@@ -34,21 +34,21 @@
       ],
       "secondary_typology": null,
       "prices": [
-        200.0
+        200
       ],
       "sizes": [
-        250.0
+        250
       ],
       "instrument_details": [
         "xmz5 comdty"
       ],
-      "stored_pnl": 225768532.5,
-      "pnl_timestamp": "2025-11-12T13:18:13.399452",
+      "stored_pnl": 225674965,
+      "pnl_timestamp": "2025-11-12T14:49:22.700351",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null
+      "stored_pnl_primary": 0.0,
+      "stored_pnl_secondary": 0.0
     }
   }
 }

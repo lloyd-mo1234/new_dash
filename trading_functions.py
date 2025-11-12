@@ -1715,9 +1715,102 @@ def get_futures_instrument_names(portfolio) -> List[str]:
         print(f"❌ Error extracting futures instrument names: {e}")
         return []
 
+def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
+    """
+    Get FX futures contract details using Bloomberg BDP
+    
+    Args:
+        fx_instruments: List of FX instrument names (e.g., ["eurusd curncy"])
+        
+    Returns:
+        DataFrame with columns: fut_tick_size, fut_tick_val, px_mid
+        Index: instrument names
+    """
+    try:
+        print(f"🔄 Getting FX details for {len(fx_instruments)} instruments...")
+        
+        if not fx_instruments:
+            print("⚠️ No FX instruments provided")
+            return pd.DataFrame()
+        
+        # Create the result DataFrame with the required columns
+        result_df = pd.DataFrame(index=fx_instruments, columns=['fut_tick_size', 'fut_tick_val', 'px_mid'])
+        
+        # Get FX rates needed for tick value calculation
+        fx_tickers_needed = []
+        
+        for instrument in fx_instruments:
+            # Extract last 3 characters before "curncy" (e.g., "usd" from "audusd curncy")
+            # Split by space and take the first part, then get last 3 characters
+            instrument_base = instrument.split()[0] if ' ' in instrument else instrument
+            if len(instrument_base) >= 6:  # Need at least 6 chars for xxxyyy pattern
+                last_three = instrument_base[-3:].upper()  # Last 3 characters
+                fx_ticker = f"{last_three}AUD Curncy"
+                fx_tickers_needed.append(fx_ticker)
+                print(f"🔍 Need FX rate for tick value: {fx_ticker}")
+        
+        # Get the FX rates
+        fx_rates = {}
+        if fx_tickers_needed:
+            try:
+                print(f"📊 Getting FX rates for tick value calculation: {fx_tickers_needed}")
+                fx_df = blp.bdp(tickers=fx_tickers_needed, flds=['px_mid'])
+                
+                for fx_ticker in fx_df.index:
+                    fx_rate = fx_df.loc[fx_ticker, 'px_mid']
+                    currency = fx_ticker.replace('AUD Curncy', '').strip()
+                    fx_rates[currency] = fx_rate
+                    print(f"💱 {currency}AUD rate: {fx_rate}")
+                    
+            except Exception as e:
+                print(f"⚠️ Error getting FX rates: {e}")
+                # Use default rate of 1.0 if we can't get FX data
+                for instrument in fx_instruments:
+                    instrument_base = instrument.split()[0] if ' ' in instrument else instrument
+                    if len(instrument_base) >= 6:
+                        last_three = instrument_base[-3:].upper()
+                        fx_rates[last_three] = 1.0
+        
+        # Get px_mid for the original instruments
+        try:
+            print(f"📊 Getting px_mid for FX instruments: {fx_instruments}")
+            px_df = blp.bdp(tickers=fx_instruments, flds=['px_mid'])
+            
+            for instrument in fx_instruments:
+                if instrument in px_df.index:
+                    result_df.loc[instrument, 'px_mid'] = px_df.loc[instrument, 'px_mid']
+                    print(f"📊 PX Mid for {instrument}: {px_df.loc[instrument, 'px_mid']}")
+        except Exception as e:
+            print(f"⚠️ Error getting px_mid for FX instruments: {e}")
+        
+        # Calculate tick size and tick value for each instrument
+        for instrument in fx_instruments:
+            # Tick size is always 0.0001 for FX
+            result_df.loc[instrument, 'fut_tick_size'] = 0.0001
+            
+            # Tick value = price for "xxxAUD curncy" * 100 (where xxx is last 3 chars)
+            instrument_base = instrument.split()[0] if ' ' in instrument else instrument
+            if len(instrument_base) >= 6:
+                last_three = instrument_base[-3:].upper()  # Last 3 characters
+                fx_rate = fx_rates.get(last_three, 1.0)
+                tick_value = fx_rate * 100
+                result_df.loc[instrument, 'fut_tick_val'] = tick_value
+                
+                print(f"✅ FX details for {instrument}:")
+                print(f"   Tick Size: {result_df.loc[instrument, 'fut_tick_size']}")
+                print(f"   Tick Value: ${tick_value} (from {last_three}AUD rate {fx_rate} * 100)")
+                print(f"   PX Mid: {result_df.loc[instrument, 'px_mid']}")
+        
+        return result_df
+        
+    except Exception as e:
+        print(f"❌ Error getting FX details: {e}")
+        return pd.DataFrame()
+
 def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
     """
     Get futures contract details using Bloomberg BDP
+    Routes to FX handler if first element ends in "curncy"
     
     Args:
         futures_instruments: List of futures instrument names
@@ -1732,28 +1825,88 @@ def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
         if not futures_instruments:
             print("⚠️ No futures instruments provided")
             return pd.DataFrame()
+        
+        # Check if first element ends in "curncy" - if so, route to FX handler
+        if futures_instruments[0].lower().endswith("curncy"):
+            print("🔀 Detected FX futures (ending in 'curncy'), routing to get_fx_detail_df")
+            return get_fx_detail_df(futures_instruments)
     
-        # Define the fields we want to retrieve
-        fields = ['fut_tick_size', 'fut_tick_val', 'px_mid']
+        # Original logic for non-FX futures
+        # Define the fields we want to retrieve (including currency)
+        fields = ['fut_tick_size', 'fut_tick_val', 'px_mid', 'crncy']
         
         print(f"📊 Requesting Bloomberg data for fields: {fields}")
         print(f"📊 Securities: {futures_instruments}")
         
         # Use Bloomberg BDP to get the data - correct parameter names are 'tickers' and 'flds'
         df = blp.bdp(tickers=futures_instruments, flds=fields)
-              
+        
+        # CURRENCY CONVERSION: Adjust fut_tick_val by currency to convert to AUD
+        if 'crncy' in df.columns and 'fut_tick_val' in df.columns:
+            print("💱 Converting fut_tick_val to AUD using FX rates...")
+            
+            # Create currency tickers for FX rates
+            ccy_tickers = []
+            unique_currencies = df['crncy'].dropna().unique()
+            
+            for ccy in unique_currencies:
+                if ccy.upper() != 'AUD':  # Don't need FX rate for AUD
+                    fx_ticker = f"{ccy.upper()}AUD Curncy"
+                    ccy_tickers.append(fx_ticker)
+                    print(f"🔍 Adding FX ticker: {fx_ticker}")
+            
+            # Get FX rates if we have non-AUD currencies
+            fx_rates = {}
+            if ccy_tickers:
+                try:
+                    print(f"📊 Getting FX rates for: {ccy_tickers}")
+                    fx_df = blp.bdp(tickers=ccy_tickers, flds=['px_mid'])
+                    
+                    for fx_ticker in fx_df.index:
+                        fx_rate = fx_df.loc[fx_ticker, 'px_mid']
+                        currency = fx_ticker.replace('AUD Curncy', '').strip()
+                        fx_rates[currency] = fx_rate
+                        print(f"💱 {currency}AUD rate: {fx_rate}")
+                        
+                except Exception as e:
+                    print(f"⚠️ Error getting FX rates: {e}")
+                    print("⚠️ Using default FX rate of 1.0 for all currencies")
+                    for ccy in unique_currencies:
+                        if ccy.upper() != 'AUD':
+                            fx_rates[ccy.upper()] = 1.0
+            
+            # Apply currency conversion to fut_tick_val
+            print("🔧 Applying currency conversion to fut_tick_val...")
+            for instrument in df.index:
+                if pd.notna(df.loc[instrument, 'crncy']) and pd.notna(df.loc[instrument, 'fut_tick_val']):
+                    currency = df.loc[instrument, 'crncy'].upper()
+                    original_tick_val = df.loc[instrument, 'fut_tick_val']
+                    
+                    if currency == 'AUD':
+                        # Already in AUD, no conversion needed
+                        converted_tick_val = original_tick_val
+                        print(f"   {instrument}: {currency} - No conversion needed: ${converted_tick_val}")
+                    else:
+                        # Convert to AUD using FX rate
+                        fx_rate = fx_rates.get(currency, 1.0)
+                        converted_tick_val = original_tick_val * fx_rate
+                        df.loc[instrument, 'fut_tick_val'] = converted_tick_val
+                        print(f"   {instrument}: {currency} -> AUD (rate: {fx_rate}) - ${original_tick_val} -> ${converted_tick_val}")
+
         print(df)
 
         # Display the actual data
-        print("📊 Futures Details:")
+        print("📊 Futures Details (with AUD-converted tick values):")
         for instrument in df.index:
             print(f"   {instrument}:")
             if 'fut_tick_size' in df.columns:
                 print(f"     Tick Size: {df.loc[instrument, 'fut_tick_size']}")
             if 'fut_tick_val' in df.columns:
-                print(f"     Tick Value: ${df.loc[instrument, 'fut_tick_val']}")
+                print(f"     Tick Value (AUD): ${df.loc[instrument, 'fut_tick_val']}")
             if 'px_mid' in df.columns:
                 print(f"     PX Mid: {df.loc[instrument, 'px_mid']}")
+            if 'crncy' in df.columns:
+                print(f"     Currency: {df.loc[instrument, 'crncy']}")
         
         return df
         
