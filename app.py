@@ -1042,8 +1042,11 @@ def add_trade():
         else:
             trade.stored_pnl = 0.0
         
-        # Add to portfolio (this will auto-save to file)
+        # Add to portfolio
         portfolio.add_trade(trade)
+        
+        # Save to file
+        portfolio.save_to_file()
         
         return jsonify({
             'success': True,
@@ -1096,6 +1099,19 @@ def get_trades():
 def get_trade_details(trade_id):
     """Get detailed information about a specific trade"""
     try:
+        if trade_id not in portfolio.trades:
+            return jsonify({'error': f'Trade {trade_id} not found'}), 404
+        
+        trade = portfolio.trades[trade_id]
+        
+        # CRITICAL FIX: Create positions from JSON data if they don't exist
+        if not trade.positions and (trade.prices or trade.sizes):
+            print(f"🔧 Creating positions for {trade_id} from stored data...")
+            if not trade.create_positions():
+                print(f"⚠️ Failed to create positions for {trade_id}")
+            else:
+                print(f"✅ Created {len(trade.positions)} primary and {len(trade.positions_secondary)} secondary positions")
+        
         trade_details = portfolio.get_trade_details(trade_id)
         
         if 'error' in trade_details:
@@ -1351,9 +1367,9 @@ def update_realtime_pnl():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/calculate_swap_pnl', methods=['POST'])
-def calculate_swap_pnl():
-    """Calculate P&L for a single position (swap or futures) - IMPROVED to use existing trade positions when possible"""
+@app.route('/add_position', methods=['POST'])
+def add_position():
+    """Add a new position to a trade"""
     try:
         data = request.get_json()
         
@@ -1361,344 +1377,329 @@ def calculate_swap_pnl():
             return jsonify({'error': 'No JSON data received'}), 400
         
         # Extract position details
-        trade_id = data.get('trade_id')  # Accept trade_id to reuse existing positions
-        position_index = data.get('position_index', 0)  # Which position in the trade
+        trade_id = data.get('trade_id')
         trade_type = data.get('tradeType', 'swap').lower()
         position_type = data.get('positionType', 'primary')  # 'primary' or 'secondary' (for EFP)
         instrument = data.get('instrument')
         price_raw = data.get('price')
         size_raw = data.get('size')
         
+        if not trade_id or trade_id not in portfolio.trades:
+            return jsonify({'error': 'Valid trade_id is required'}), 400
         
-        # EFFICIENCY IMPROVEMENT: Try to use existing trade position first
-        if trade_id and trade_id in portfolio.trades:
-            trade = portfolio.trades[trade_id]
-            
-            # Convert price/size from request for updating existing position
-            try:
-                new_price = float(price_raw) if price_raw is not None else None
-                # Handle size as either single value or list
-                if isinstance(size_raw, list):
-                    new_size = [float(s) for s in size_raw] if size_raw is not None else None
-                else:
-                    new_size = float(size_raw) if size_raw is not None else None
-            except (ValueError, TypeError):
-                new_price = None
-                new_size = None
-            
-            # For EFP trades, check which leg we're calculating (primary = swap, secondary = futures)
-            if trade_type == 'efp':
-                if position_type == 'secondary':
-                    # Use secondary positions (futures leg)
-                    if (hasattr(trade, 'positions_secondary') and 
-                        len(trade.positions_secondary) > position_index):
-                        existing_position = trade.positions_secondary[position_index]
-                    else:
-                        existing_position = None
-                else:
-                    # Use primary positions (swap leg)
-                    if (hasattr(trade, 'positions') and 
-                        len(trade.positions) > position_index):
-                        existing_position = trade.positions[position_index]
-                    else:
-                        existing_position = None
-            else:
-                # Standard swap or futures trade
-                if (hasattr(trade, 'positions') and 
-                    len(trade.positions) > position_index):
-                    existing_position = trade.positions[position_index]
-                else:
-                    existing_position = None
-            
-            # Process existing position if found
-            if existing_position:
-                
-                # UPDATE existing position with new values if provided
-                if new_price is not None and new_size is not None:
-                    existing_position.price = new_price
-                    existing_position.size = new_size
-                    
-                    # Also update the underlying trade arrays to keep them in sync
-                    if trade_type == 'efp' and position_type == 'secondary':
-                        # Update secondary arrays for EFP futures leg
-                        while len(trade.prices_secondary) <= position_index:
-                            trade.prices_secondary.append(0.0)
-                        while len(trade.sizes_secondary) <= position_index:
-                            trade.sizes_secondary.append(0.0)
-                        
-                        trade.prices_secondary[position_index] = new_price
-                        trade.sizes_secondary[position_index] = new_size
-                    else:
-                        # Update primary arrays (for standard trades or EFP swap leg)
-                        while len(trade.prices) <= position_index:
-                            trade.prices.append(0.0)
-                        while len(trade.sizes) <= position_index:
-                            trade.sizes.append(0.0)
-                        
-                        trade.prices[position_index] = new_price
-                        trade.sizes[position_index] = new_size
-                    
-                    
-                    # Mark XC swaps as outdated so they get recreated with new values
-                    if hasattr(existing_position, 'xc_created'):
-                        existing_position.xc_created = False
-                        existing_position.xc_swaps = []
-                    
-                    # Save the updated portfolio to JSON file
-                    portfolio.save_to_file()
-                    
-                    # CRITICAL FIX: Clear positions arrays to force recreation with new price/size
-                    if trade_type == 'efp' and position_type == 'secondary':
-                        trade.positions_secondary = []
-                    else:
-                        trade.positions = []
-                    
-                    # Force recreation by setting existing_position to None
-                    existing_position = None
-                
-                # Handle SWAP positions
-                if isinstance(existing_position, XCSwapPosition):
-                    if hasattr(existing_position, 'xc_created') and existing_position.xc_created:
-                        
-                        # Calculate P&L using existing XC swaps
-                        pnl_result = existing_position.calculate_pnl()
-                        
-                        # Update stored P&L in trade object
-                        total_trade_pnl = None
-                        if pnl_result['error'] is None:
-                            total_trade_pnl = calculate_total_trade_pnl(trade)
-                            if total_trade_pnl is not None:
-                                trade.stored_pnl = total_trade_pnl
-                                trade.pnl_timestamp = datetime.now().isoformat()
-                                portfolio.save_to_file()
-                        
-                        # Get component details for response
-                        component_details = []
-                        for swap_info in existing_position.xc_swaps:
-                            component_details.append({
-                                'instrument': swap_info['instrument'],
-                                'coefficient': swap_info['coefficient'],
-                                'notional': swap_info['notional'],
-                                'rate': swap_info['rate']
-                            })
-                        
-                        return jsonify({
-                            'success': True,
-                            'pnl': pnl_result['pnl'],
-                            'error': pnl_result['error'],
-                            'components': component_details,
-                            'component_pnls': pnl_result.get('components', []),
-                            'method': 'reused_existing_swap_position',
-                            'position_details': {
-                                'handle': existing_position.handle,
-                                'instrument': existing_position.instrument,
-                                'total_components': len(existing_position.xc_swaps)
-                            },
-                            'total_trade_pnl': total_trade_pnl  # Include updated total trade P&L
-                        })
-                    else:
-                        if existing_position.create_xc_swaps():
-                            pnl_result = existing_position.calculate_pnl()
-                            
-                            # Update stored P&L in trade object
-                            total_trade_pnl = None
-                            if pnl_result['error'] is None:
-                                total_trade_pnl = calculate_total_trade_pnl(trade)
-                                if total_trade_pnl is not None:
-                                    trade.stored_pnl = total_trade_pnl
-                                    trade.pnl_timestamp = datetime.now().isoformat()
-                                    portfolio.save_to_file()
-                            
-                            component_details = []
-                            for swap_info in existing_position.xc_swaps:
-                                component_details.append({
-                                    'instrument': swap_info['instrument'],
-                                    'coefficient': swap_info['coefficient'],
-                                    'notional': swap_info['notional'],
-                                    'rate': swap_info['rate']
-                                })
-                            
-                            return jsonify({
-                                'success': True,
-                                'pnl': pnl_result['pnl'],
-                                'error': pnl_result['error'],
-                                'components': component_details,
-                                'component_pnls': pnl_result.get('components', []),
-                                'method': 'created_xc_swaps_for_existing_position',
-                                'position_details': {
-                                    'handle': existing_position.handle,
-                                    'instrument': existing_position.instrument,
-                                    'total_components': len(existing_position.xc_swaps)
-                                },
-                                'total_trade_pnl': total_trade_pnl  # Include updated total trade P&L
-                            })
-                
-                # Handle FUTURES positions
-                elif isinstance(existing_position, XCFuturesPosition):
-                    
-                    # Parse the futures expression to get individual components
-                    components = parse_futures_expression(existing_position.instrument)
-                    if not components:
-                        return jsonify({'error': f'Could not parse futures expression: {existing_position.instrument}'}), 400
-                    
-                    # Extract unique instrument names from components
-                    unique_instruments = list(set([comp['instrument'] for comp in components]))
-                    
-                    # Get futures tick data for all component instruments
-                    futures_df = get_futures_details(unique_instruments)
-                    
-                    # Calculate P&L using futures tick data
-                    pnl_result = existing_position.calculate_pnl(futures_df)
-                    
-                    # Update stored P&L in trade object
-                    total_trade_pnl = None
-                    if pnl_result['error'] is None:
-                        total_trade_pnl = calculate_total_trade_pnl(trade)
-                        if total_trade_pnl is not None:
-                            trade.stored_pnl = total_trade_pnl
-                            trade.pnl_timestamp = datetime.now().isoformat()
-                            portfolio.save_to_file()
-                    
-                    return jsonify({
-                        'success': True,
-                        'pnl': pnl_result['pnl'],
-                        'error': pnl_result['error'],
-                        'method': 'reused_existing_futures_position',
-                        'position_details': {
-                            'handle': existing_position.handle,
-                            'instrument': existing_position.instrument,
-                            'price': existing_position.price,
-                            'size': existing_position.size
-                        },
-                        'futures_details': pnl_result.get('details', {}),
-                        'total_trade_pnl': total_trade_pnl  # Include updated total trade P&L
-                    })
+        trade = portfolio.trades[trade_id]
         
-        
-        # Convert to numbers with error handling
-        # Handle size as either a single value or an array (for futures expressions with multiple components)
+        # Convert to numbers
         try:
             price = float(price_raw) if price_raw is not None else 0
-            
-            # Check if size is an array (list) or a single value
             if isinstance(size_raw, list):
-                # It's an array - convert each element to float
                 size = [float(s) for s in size_raw]
-                print(f"📊 Size is an array: {size}")
             else:
-                # It's a single value - convert to float
                 size = float(size_raw) if size_raw is not None else 0
-                print(f"📊 Size is a single value: {size}")
         except (ValueError, TypeError) as e:
             return jsonify({'error': f'Invalid price or size format: {e}'}), 400
         
-        # DON'T multiply by 100 - frontend sends price in correct form (4.9 for swaps, 96.40 for futures)
-        
-        # Validate size (handle both single value and array)
+        # Validate - allow zeros for initialization
         size_is_valid = False
         if isinstance(size, list):
-            size_is_valid = len(size) > 0 and all(s != 0 for s in size)
+            size_is_valid = len(size) > 0
         else:
-            size_is_valid = size != 0
+            size_is_valid = True  # Single size is always valid (including 0)
         
-        if not instrument or price == 0 or not size_is_valid:
-            return jsonify({
-                'error': f'Missing required parameters: instrument="{instrument}", price={price}, size={size}'
-            }), 400
+        if not instrument:
+            return jsonify({'error': 'Missing required parameters'}), 400
+        
+        # Determine which positions array to use
+        if trade_type == 'efp' and position_type == 'secondary':
+            positions_array = trade.positions_secondary
+            handle_prefix = f"{trade_id}_futures_position"
+        else:
+            positions_array = trade.positions
+            handle_prefix = f"{trade_id}_position"
+        
+        # Create unique handle
+        position_handle = f"{handle_prefix}_{len(positions_array)}"
         
         # Handle FUTURES
-        if trade_type == 'future':
-            
-            temp_handle = f"temp_futures_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-            
+        if trade_type == 'future' or (trade_type == 'efp' and position_type == 'secondary'):
             position = XCFuturesPosition(
-                handle=temp_handle,
+                handle=position_handle,
                 price=price,
                 size=size,
                 instrument=instrument
             )
             
-            # Parse the futures expression to get individual components
-            components = parse_futures_expression(instrument)
-            if not components:
-                return jsonify({'error': f'Could not parse futures expression: {instrument}'}), 400
+            # Build the futures expression
+            if not position.build_futures_expression():
+                return jsonify({'error': f'Failed to build futures expression for {instrument}'}), 500
             
-            # Extract unique instrument names from components
-            unique_instruments = list(set([comp['instrument'] for comp in components]))
+            # Add position to trade
+            positions_array.append(position)
             
-            # Get futures tick data for all component instruments
+            # Update trade arrays to keep in sync
+            if trade_type == 'efp' and position_type == 'secondary':
+                trade.prices_secondary.append(price)
+                trade.sizes_secondary.append(size)
+            else:
+                trade.prices.append(price)
+                trade.sizes.append(size)
+            
+            return jsonify({
+                'success': True,
+                'position_index': len(positions_array) - 1,
+                'position_handle': position_handle,
+                'message': 'Position added successfully'
+            })
+        
+        # Handle SWAPS
+        else:
+            position = XCSwapPosition(
+                handle=position_handle,
+                price=price,
+                size=size,
+                instrument=instrument
+            )
+            
+            # Create XC swaps
+            if not position.create_xc_swaps():
+                return jsonify({'error': f'Failed to create XC swaps for {instrument}'}), 500
+            
+            # Add position to trade
+            positions_array.append(position)
+            
+            # Update trade arrays to keep in sync
+            trade.prices.append(price)
+            trade.sizes.append(size)
+            
+            return jsonify({
+                'success': True,
+                'position_index': len(positions_array) - 1,
+                'position_handle': position_handle,
+                'message': 'Position added successfully'
+            })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/edit_position', methods=['POST'])
+def edit_position():
+    """Edit an existing position's price and/or size"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No JSON data received'}), 400
+        
+        # Extract parameters
+        trade_id = data.get('trade_id')
+        position_index = data.get('position_index', 0)
+        position_type = data.get('positionType', 'primary')  # 'primary' or 'secondary'
+        new_price = data.get('price')
+        new_size = data.get('size')
+        
+        if not trade_id or trade_id not in portfolio.trades:
+            return jsonify({'error': 'Valid trade_id is required'}), 400
+        
+        trade = portfolio.trades[trade_id]
+        
+        # Get the position
+        if position_type == 'secondary':
+            if not hasattr(trade, 'positions_secondary') or position_index >= len(trade.positions_secondary):
+                return jsonify({'error': f'Position {position_index} not found in secondary positions'}), 404
+            position = trade.positions_secondary[position_index]
+        else:
+            if not hasattr(trade, 'positions') or position_index >= len(trade.positions):
+                return jsonify({'error': f'Position {position_index} not found'}), 404
+            position = trade.positions[position_index]
+        
+        # Update position with new values if provided
+        if new_price is not None:
+            position.price = float(new_price)
+            print(f'📝 Updated position {position_index} price to: {position.price}')
+        
+        if new_size is not None:
+            if isinstance(new_size, list):
+                position.size = [float(s) for s in new_size]
+            else:
+                position.size = float(new_size)
+            print(f'📝 Updated position {position_index} size to: {position.size}')
+        
+        # Recreate XC swaps with new values
+        if isinstance(position, XCSwapPosition):
+            position.xc_created = False
+            position.xc_swaps = []
+            print('🔄 Marked XC swaps for recreation with new values')
+            
+            # Actually recreate the swaps with new values
+            if position.create_xc_swaps():
+                print(f'✅ XC swaps recreated successfully with new values')
+            else:
+                print(f'❌ Failed to recreate XC swaps')
+                return jsonify({'error': 'Failed to recreate XC swaps with new values'}), 500
+        
+        # Recreate futures expression with new values
+        elif isinstance(position, XCFuturesPosition):
+            position.futures_built = False
+            position.component_rates = {}  # Clear cached component rates to force recalculation
+            print('🔄 Marked futures expression for recreation with new values')
+            
+            # Actually rebuild the futures expression with new values
+            if position.build_futures_expression():
+                print(f'✅ Futures expression rebuilt successfully with new values')
+            else:
+                print(f'❌ Failed to rebuild futures expression')
+                return jsonify({'error': 'Failed to rebuild futures expression with new values'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': f'Position {position_index} updated successfully',
+            'position_index': position_index
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/calculate_position_pnl', methods=['POST'])
+def calculate_position_pnl():
+    """Calculate P&L for an existing position"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No JSON data received'}), 400
+        
+        # Extract parameters
+        trade_id = data.get('trade_id')
+        position_index = data.get('position_index', 0)
+        position_type = data.get('positionType', 'primary')  # 'primary' or 'secondary'
+        
+        if not trade_id or trade_id not in portfolio.trades:
+            return jsonify({'error': 'Valid trade_id is required'}), 400
+        
+        trade = portfolio.trades[trade_id]
+        
+        # CRITICAL FIX: Create positions from JSON data if they don't exist
+        positions_array = trade.positions_secondary if position_type == 'secondary' else trade.positions
+        
+        if not positions_array and (trade.prices or trade.sizes):
+            print(f"🔧 Creating positions for {trade_id} from stored data (calculate_position_pnl)...")
+            if not trade.create_positions():
+                return jsonify({'error': 'Failed to create positions from stored data'}), 500
+            else:
+                print(f"✅ Created {len(trade.positions)} primary and {len(trade.positions_secondary)} secondary positions")
+                # Update positions_array reference after creation
+                positions_array = trade.positions_secondary if position_type == 'secondary' else trade.positions
+        
+        # Get the position
+        if position_index >= len(positions_array):
+            return jsonify({'error': f'Position {position_index} not found'}), 404
+            
+        position = positions_array[position_index]
+        
+        # Calculate P&L based on position type
+        if isinstance(position, XCFuturesPosition):
+            # Get futures details
+            unique_instruments = list(set([comp['instrument'] for comp in position.components]))
             futures_df = get_futures_details(unique_instruments)
-            
-            # Calculate P&L
             pnl_result = position.calculate_pnl(futures_df)
             
             return jsonify({
                 'success': True,
                 'pnl': pnl_result['pnl'],
                 'error': pnl_result['error'],
-                'method': 'temporary_futures_position_created',
                 'position_details': {
-                    'handle': temp_handle,
-                    'instrument': instrument,
-                    'price': price,
-                    'size': size
-                },
-                'futures_details': pnl_result.get('details', {})
+                    'handle': position.handle,
+                    'instrument': position.instrument,
+                    'price': position.price,
+                    'size': position.size
+                }
             })
         
-        # Handle SWAPS
-        else:
+        elif isinstance(position, XCSwapPosition):
+            # Calculate P&L
+            pnl_result = position.calculate_pnl()
             
-            # Parse the complex expression to understand its structure
-            components = parse_complex_expression(instrument)
-            
-            if not components:
-                return jsonify({'error': f'Could not parse instrument expression: {instrument}'}), 400
-            
-            # Create temporary XC position for P&L calculation
-            temp_handle = f"temp_swap_pnl_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-            
-            position = XCSwapPosition(
-                handle=temp_handle,
-                price=price,  # Already converted to percentage terms above
-                size=size,
-                instrument=instrument
-            )
-            
-            # Create XC swaps and calculate P&L
-            if position.create_xc_swaps():  
-                pnl_result = position.calculate_pnl()
-                
-                # Get component details for response
-                component_details = []
-                for swap_info in position.xc_swaps:
-                    component_details.append({
-                        'instrument': swap_info['instrument'],
-                        'coefficient': swap_info['coefficient'],
-                        'notional': swap_info['notional'],
-                        'rate': swap_info['rate']
-                    })
-                
-                return jsonify({
-                    'success': True,
-                    'pnl': pnl_result['pnl'],
-                    'error': pnl_result['error'],
-                    'components': component_details,
-                    'component_pnls': pnl_result.get('components', []),
-                    'method': 'temporary_swap_position_created',
-                    'position_details': {
-                        'handle': temp_handle,
-                        'instrument': instrument,
-                        'total_components': len(position.xc_swaps)
-                    }
+            # Get component details
+            component_details = []
+            for swap_info in position.xc_swaps:
+                component_details.append({
+                    'instrument': swap_info['instrument'],
+                    'coefficient': swap_info['coefficient'],
+                    'notional': swap_info['notional'],
+                    'rate': swap_info['rate']
                 })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': f'Failed to create XC swaps for {instrument}'
-                }), 500
+            
+            return jsonify({
+                'success': True,
+                'pnl': pnl_result['pnl'],
+                'error': pnl_result['error'],
+                'components': component_details,
+                'component_pnls': pnl_result.get('components', []),
+                'position_details': {
+                    'handle': position.handle,
+                    'instrument': position.instrument,
+                    'total_components': len(position.xc_swaps)
+                }
+            })
+        
+        else:
+            return jsonify({'error': 'Unknown position type'}), 500
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/restore_portfolio', methods=['POST'])
+def restore_portfolio():
+    """Restore portfolio from a backup (cancel unsaved changes)"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'trades' not in data:
+            return jsonify({'error': 'No backup data provided'}), 400
+        
+        backup_trades = data.get('trades', {})
+        
+        print(f'🔄 Restoring portfolio from backup ({len(backup_trades)} trades)...')
+        
+        # Clear current portfolio
+        portfolio.trades.clear()
+        
+        # Restore each trade from backup
+        for trade_id, trade_data in backup_trades.items():
+            trade = Trade(
+                trade_id=trade_data['trade_id'],
+                typology=trade_data.get('typology'),
+                secondary_typology=trade_data.get('secondary_typology')
+            )
+            
+            # Restore trade properties
+            trade.instrument_details = trade_data.get('instrument_details', [])
+            trade.instrument_details_secondary = trade_data.get('instrument_details_secondary', [])
+            trade.prices = trade_data.get('prices', [])
+            trade.sizes = trade_data.get('sizes', [])
+            trade.prices_secondary = trade_data.get('prices_secondary', [])
+            trade.sizes_secondary = trade_data.get('sizes_secondary', [])
+            trade.stored_pnl = trade_data.get('stored_pnl', 0.0)
+            trade.stored_pnl_primary = trade_data.get('stored_pnl_primary', 0.0)
+            trade.stored_pnl_secondary = trade_data.get('stored_pnl_secondary', 0.0)
+            trade.pnl_timestamp = trade_data.get('pnl_timestamp')
+            
+            # Add to portfolio
+            portfolio.trades[trade_id] = trade
+        
+        # Save restored portfolio to file
+        portfolio.save_to_file()
+        
+        print(f'✅ Portfolio restored successfully with {len(portfolio.trades)} trades')
+        
+        return jsonify({
+            'success': True,
+            'message': f'Portfolio restored with {len(portfolio.trades)} trades'
+        })
+        
+    except Exception as e:
+        print(f'❌ Error restoring portfolio: {e}')
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

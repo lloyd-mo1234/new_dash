@@ -143,16 +143,20 @@ class XCSwapPosition:
                         'target_dv01': target_dv01_with_coeff
                     })
                     
-                    print(f"✅ Created component swap: {component_handle}")
+                    print(f"✅ SWAP POSITION CREATED: {component_handle}")
                     print(f"   Final notional: ${required_notional:,.0f}")
                     print(f"   Expected DV01: ${target_dv01_with_coeff:,.0f}")
+                    print(f"   ✅ SWAP POSITION ADDED TO self.xc_swaps (total count: {len(self.xc_swaps)})")
                     
                 except Exception as e:
                     print(f"❌ Error creating component {component_handle}: {e}")
                     return False
             
             self.xc_created = True
-            print(f"✅ Created {len(self.xc_swaps)} XC swaps for position: {self.handle}")
+            print(f"🎉 POSITION CREATION COMPLETE: {self.handle}")
+            print(f"   Total XC swaps created: {len(self.xc_swaps)}")
+            print(f"   self.xc_created = {self.xc_created}")
+            print(f"   Position ready for PnL calculation")
             return True
             
         except Exception as e:
@@ -163,9 +167,14 @@ class XCSwapPosition:
     
     def calculate_pnl(self, curve_handle: str = None):
         """Calculate P&L using xc.PresentValue for all component swaps"""
+        print(f"🔍 calculate_pnl called for position: {self.handle}")
+        print(f"   self.xc_created = {self.xc_created}")
+        print(f"   len(self.xc_swaps) = {len(self.xc_swaps)}")
+        
         if not self.xc_created or not self.xc_swaps:
             error_msg = f"XC swaps for {self.handle} not created, cannot calculate P&L"
             print(f"⚠️ {error_msg}")
+            print(f"   ❌ RETURNING ZERO PNL - No XC swaps exist")
             return {'pnl': 0.0, 'error': error_msg}
         
         # Generate today's curve bundle name if not provided
@@ -245,7 +254,7 @@ class XCFuturesPosition:
         try:
             print(f"🔧 Building futures expression for position: {self.handle}")
             print(f"   Instrument: {self.instrument}")
-            print(f"   Entry Price: {self.price}")
+            print(f"   Entry Price (spread): {self.price}")
             print(f"   Size: {self.size}")
             
             # Parse the instrument expression if not already done
@@ -271,14 +280,15 @@ class XCFuturesPosition:
                     print(f"❌ No futures tick data available")
                     return False
             
-            # Calculate component prices if not already set
-            if not self.component_rates:
-                self.component_rates = solve_futures_component_prices(
-                    self.components, 
-                    self.price, 
-                    futures_tick_data
-                )
-                print(f"✅ Component prices calculated: {self.component_rates}")
+            # CRITICAL FIX: Always recalculate component prices using self.price
+            # This ensures the spread price from the modal is used correctly
+            print(f"🔧 Calculating component prices using spread price: {self.price}")
+            self.component_rates = solve_futures_component_prices(
+                self.components, 
+                self.price, 
+                futures_tick_data
+            )
+            print(f"✅ Component prices calculated: {self.component_rates}")
             
             self.futures_built = True
             print(f"✅ Futures expression built successfully for {self.handle}")
@@ -410,10 +420,11 @@ class XCFuturesPosition:
 class Trade:
     """Object representing a single trade with XC swap positions"""
     
-    def __init__(self, trade_id: str, typology=None, secondary_typology: str = None):
+    def __init__(self, trade_id: str, typology=None, secondary_typology: str = None, is_temporary: bool = False):
         self.trade_id = trade_id
         self.typology = typology if isinstance(typology, list) else [typology] if typology else []  # List of trade types
         self.secondary_typology = secondary_typology  # for EFP trades (e.g., 'futures')
+        self.is_temporary = is_temporary  # Flag to mark unsaved trades
         
         # For EFP trades, we have dual data structures:
         # Primary (swap) and Secondary (futures)
@@ -707,12 +718,11 @@ class Portfolio:
         self.load_from_file()
         
     def add_trade(self, trade: Trade):
-        """Add a trade to the portfolio"""
+        """Add a trade to the portfolio (does not auto-save)"""
         self.trades[trade.trade_id] = trade
-        self.save_to_file()  # Auto-save after adding
     
     def remove_trade(self, trade_id: str):
-        """Remove a trade from the portfolio"""
+        """Remove a trade from the portfolio (does not auto-save)"""
         if trade_id in self.trades:
             del self.trades[trade_id]
             self.save_to_file()  # Auto-save after removing

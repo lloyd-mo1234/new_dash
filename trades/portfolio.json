@@ -1,115 +1,106 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-11T10:49:34.735416",
-    "total_portfolio_pnl": -6947643.5407047635
+    "last_pnl_update": "2025-11-12T11:01:21.905920",
+    "total_portfolio_pnl": -806090.8933543442
   },
   "trades": {
     "trade1": {
       "trade_id": "trade1",
       "typology": [
-        "efp"
+        "swap"
       ],
-      "secondary_typology": "future",
+      "secondary_typology": null,
       "prices": [
-        5.0,
-        4.0,
-        3.0
+        5,
+        5.5,
+        4,
+        4.2
       ],
       "sizes": [
-        100.0,
-        90.0,
-        110.0
+        200,
+        250,
+        150,
+        100
       ],
       "instrument_details": [
         "aud.5y5y"
       ],
-      "stored_pnl": -5340772.064860264,
-      "pnl_timestamp": "2025-11-11T10:49:34.735416",
-      "prices_secondary": [
-        96.75,
-        97.75,
-        98.55,
-        97.12,
-        95.55
-      ],
-      "sizes_secondary": [
-        200.0,
-        250.0,
-        350.0,
-        450.0,
-        550.0
-      ],
-      "instrument_details_secondary": [
-        "xmz5 comdty"
-      ],
-      "stored_pnl_primary": -26574280.064860314,
-      "stored_pnl_secondary": 21233508.00000005
+      "stored_pnl": -1501518.3933543414,
+      "pnl_timestamp": "2025-11-12T11:01:21.905920",
+      "prices_secondary": [],
+      "sizes_secondary": [],
+      "instrument_details_secondary": [],
+      "stored_pnl_primary": 0.0,
+      "stored_pnl_secondary": 0.0
     },
     "trade2": {
       "trade_id": "trade2",
       "typology": [
-        "efp"
+        "future"
       ],
-      "secondary_typology": "future",
+      "secondary_typology": null,
       "prices": [
-        0.55
+        96
       ],
       "sizes": [
-        100.0
+        100
       ],
       "instrument_details": [
-        "aud.3y.10y"
-      ],
-      "stored_pnl": 487965.4869974777,
-      "pnl_timestamp": "2025-11-11T10:49:34.735416",
-      "prices_secondary": [
-        -0.75,
-        -0.8
-      ],
-      "sizes_secondary": [
-        [
-          200,
-          600
-        ],
-        [
-          300,
-          900
-        ]
-      ],
-      "instrument_details_secondary": [
-        "ymz5 comdty - xmz5 comdty"
-      ],
-      "stored_pnl_primary": 487965.4869974777,
-      "stored_pnl_secondary": 0.0
-    },
-    "tr2": {
-      "trade_id": "tr2",
-      "typology": [
-        "efp"
-      ],
-      "secondary_typology": "future",
-      "prices": [
-        5.0
-      ],
-      "sizes": [
-        100.0
-      ],
-      "instrument_details": [
-        "aud.10y10y"
-      ],
-      "stored_pnl": -2094836.9628419771,
-      "pnl_timestamp": "2025-11-11T10:49:34.735416",
-      "prices_secondary": [
-        95.0
-      ],
-      "sizes_secondary": [
-        100.0
-      ],
-      "instrument_details_secondary": [
         "xmz5 comdty"
       ],
-      "stored_pnl_primary": -1579313.9628419802,
-      "stored_pnl_secondary": -515522.99999999703
+      "stored_pnl": 339119.99999999854,
+      "pnl_timestamp": "2025-11-12T11:01:21.905920",
+      "prices_secondary": [],
+      "sizes_secondary": [],
+      "instrument_details_secondary": [],
+      "stored_pnl_primary": 0.0,
+      "stored_pnl_secondary": 0.0
+    },
+    "trade3": {
+      "trade_id": "trade3",
+      "typology": [
+        "future"
+      ],
+      "secondary_typology": null,
+      "prices": [
+        96
+      ],
+      "sizes": [
+        100
+      ],
+      "instrument_details": [
+        "xmz5 comdty"
+      ],
+      "stored_pnl": 339119.99999999854,
+      "pnl_timestamp": "2025-11-12T11:01:21.905920",
+      "prices_secondary": [],
+      "sizes_secondary": [],
+      "instrument_details_secondary": [],
+      "stored_pnl_primary": 0.0,
+      "stored_pnl_secondary": 0.0
+    },
+    "trade4": {
+      "trade_id": "trade4",
+      "typology": [
+        "future"
+      ],
+      "secondary_typology": null,
+      "prices": [
+        113
+      ],
+      "sizes": [
+        200
+      ],
+      "instrument_details": [
+        "tyz5 comdty"
+      ],
+      "stored_pnl": 17187.5,
+      "pnl_timestamp": "2025-11-12T11:01:21.905920",
+      "prices_secondary": [],
+      "sizes_secondary": [],
+      "instrument_details_secondary": [],
+      "stored_pnl_primary": 0.0,
+      "stored_pnl_secondary": 0.0
     }
   }
 }
