@@ -462,7 +462,7 @@ def get_realtime_rates():
                             break
                     
                     if all_instruments_found:
-                        rates[label] = f"{result_value:.3f}"
+                        rates[label] = f"{result_value:.4f}"
                         base_rates[label] = result_value
                     else:
                         rates[label] = '--'
