@@ -825,6 +825,9 @@ class Portfolio:
                     else:
                         trade.instrument_details_secondary = instrument_details_secondary
                     
+                    # CRITICAL FIX: Always initialize positions_secondary as empty list
+                    trade.positions_secondary = []
+                    
                     # Load stored P&L data (new format)
                     trade.stored_pnl = trade_data.get('stored_pnl', 0.0)
                     trade.pnl_timestamp = trade_data.get('pnl_timestamp')

@@ -3593,14 +3593,31 @@
         
         // MODULAR: Edit position then calculate P&L
         function handlePositionChange(input) {
-            console.log('✏️ POSITION EDITED - updating backend and calculating P&L');
+            console.log('🔥 =================================== HANDLE POSITION CHANGE START ===================================');
+            console.log('✏️ POSITION EDITED - Input element that triggered change:', input);
+            console.log('✏️ Input element details:', {
+                tagName: input.tagName,
+                type: input.type,
+                value: input.value,
+                dataset: input.dataset,
+                className: input.className
+            });
             
             const row = input.closest('tr');
+            console.log('🔍 Row found:', row);
+            
             const priceInput = row.querySelector('[data-position-price]');
             const pnlDisplay = row.querySelector('.pnl-display');
             
+            console.log('🔍 Row elements found:', {
+                priceInput: !!priceInput,
+                priceValue: priceInput?.value,
+                pnlDisplay: !!pnlDisplay,
+                pnlCurrentText: pnlDisplay?.textContent
+            });
+            
             if (!priceInput || !pnlDisplay) {
-                console.log('❌ Missing elements for P&L calculation');
+                console.log('❌ Missing elements for P&L calculation - ABORTING');
                 return;
             }
             
@@ -3608,80 +3625,147 @@
             const positionsTableBody = document.getElementById('positionsTableBody');
             const secondaryPositionsTableBody = document.getElementById('secondaryPositionsTableBody');
             
+            console.log('🔍 Table references:', {
+                positionsTableBody: !!positionsTableBody,
+                secondaryPositionsTableBody: !!secondaryPositionsTableBody
+            });
+            
             const isSecondaryPosition = secondaryPositionsTableBody && secondaryPositionsTableBody.contains(row);
             const tableType = isSecondaryPosition ? 'secondary' : 'primary';
+            
+            console.log('🔍 Position type determination:', {
+                isSecondaryPosition: isSecondaryPosition,
+                tableType: tableType,
+                containsCheck: secondaryPositionsTableBody ? secondaryPositionsTableBody.contains(row) : 'N/A'
+            });
             
             // Get position index (row position in table)
             const positionTable = isSecondaryPosition ? secondaryPositionsTableBody : positionsTableBody;
             const positionRows = Array.from(positionTable.querySelectorAll('tr'));
             const positionIndex = positionRows.indexOf(row);
             
-            console.log(`🔍 Editing position at index ${positionIndex} in ${tableType.toUpperCase()} table`);
+            console.log('🔍 Position index calculation:', {
+                positionTable: positionTable === positionsTableBody ? 'PRIMARY' : 'SECONDARY',
+                totalRows: positionRows.length,
+                positionIndex: positionIndex,
+                rowsFoundInTable: positionRows.map((r, i) => `Row ${i}: ${r === row ? 'THIS ROW' : 'other'}`)
+            });
+            
+            if (positionIndex === -1) {
+                console.error('❌ CRITICAL: Row not found in position table - this will cause backend errors!');
+                console.log('🔍 Debug info:', {
+                    row: row,
+                    positionTable: positionTable,
+                    allRows: positionRows
+                });
+            }
             
             // Get price and size values
             const price = parseFloat(priceInput.value);
             const sizeInputs = row.querySelectorAll('[data-position-size]');
+            
+            console.log('🔍 Size inputs found:', {
+                count: sizeInputs.length,
+                values: Array.from(sizeInputs).map((input, i) => ({
+                    index: i,
+                    value: input.value,
+                    dataset: input.dataset
+                }))
+            });
             
             // Collect size value(s) - can be single or array for futures
             let size;
             if (sizeInputs.length > 1) {
                 // Multiple sizes (futures with components)
                 size = Array.from(sizeInputs).map(input => parseFloat(input.value) || 0);
+                console.log('🔢 Multiple component sizes collected:', size);
             } else if (sizeInputs.length === 1) {
                 // Single size
                 size = parseFloat(sizeInputs[0].value) || 0;
+                console.log('🔢 Single size collected:', size);
             } else {
                 size = 0;
+                console.log('🔢 No size inputs found, defaulting to 0');
             }
             
             // Validate we have data
             const sizeIsValid = Array.isArray(size) ? size.some(s => s !== 0) : size !== 0;
             
+            console.log('🔍 Data validation:', {
+                price: price,
+                priceIsValid: !isNaN(price),
+                size: size,
+                sizeIsValid: sizeIsValid,
+                canProceed: !isNaN(price) && sizeIsValid
+            });
+            
             if (!isNaN(price) && sizeIsValid) {
+                console.log(`🚀 Starting backend update for ${tableType.toUpperCase()} position ${positionIndex}`);
+                
                 pnlDisplay.textContent = 'Updating...';
                 pnlDisplay.style.color = '#cccccc';
+                
+                const editPayload = {
+                    trade_id: currentTradeId,
+                    position_index: positionIndex,
+                    positionType: tableType,
+                    price: price,
+                    size: size
+                };
+                
+                console.log('📤 EDIT POSITION REQUEST:', editPayload);
                 
                 // Step 1: Edit the position in backend
                 fetch('/edit_position', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        trade_id: currentTradeId,
-                        position_index: positionIndex,
-                        positionType: tableType,
-                        price: price,
-                        size: size
-                    })
+                    body: JSON.stringify(editPayload)
                 })
-                .then(response => response.json())
+                .then(response => {
+                    console.log('📡 Edit position response status:', response.status);
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('📥 EDIT POSITION RESPONSE:', data);
+                    
                     if (!data.success) {
                         throw new Error(data.error || 'Failed to edit position');
                     }
                     
-                    console.log(`✅ Position ${positionIndex} updated in backend`);
+                    console.log(`✅ Position ${positionIndex} (${tableType}) updated in backend successfully`);
                     
                     // Step 2: Calculate P&L for the updated position
                     pnlDisplay.textContent = 'Calculating...';
                     
+                    const pnlPayload = {
+                        trade_id: currentTradeId,
+                        position_index: positionIndex,
+                        positionType: tableType
+                    };
+                    
+                    console.log('📤 CALCULATE PNL REQUEST:', pnlPayload);
+                    
                     return fetch('/calculate_position_pnl', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            trade_id: currentTradeId,
-                            position_index: positionIndex,
-                            positionType: tableType
-                        })
+                        body: JSON.stringify(pnlPayload)
                     });
                 })
-                .then(response => response.json())
+                .then(response => {
+                    console.log('📡 Calculate P&L response status:', response.status);
+                    return response.json();
+                })
                 .then(data => {
+                    console.log('📥 CALCULATE PNL RESPONSE:', data);
+                    
                     if (data.success && data.pnl !== undefined) {
                         const pnl = data.pnl;
-                        pnlDisplay.textContent = `$${pnl.toLocaleString('en-US', {
+                        const formattedPnL = `$${pnl.toLocaleString('en-US', {
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0
                         })}`;
+                        
+                        pnlDisplay.textContent = formattedPnL;
                         
                         if (pnl > 0) {
                             pnlDisplay.style.color = '#51cf66';
@@ -3691,23 +3775,39 @@
                             pnlDisplay.style.color = '#cccccc';
                         }
                         
-                        console.log(`✅ P&L calculated: ${pnl}`);
+                        console.log(`✅ P&L calculated and displayed: ${pnl} -> ${formattedPnL}`);
+                        
+                        // Log additional details if available
+                        if (data.position_details) {
+                            console.log('🔍 Position details from backend:', data.position_details);
+                        }
+                        if (data.components) {
+                            console.log('🔍 Component details from backend:', data.components);
+                        }
+                        if (data.component_pnls) {
+                            console.log('🔍 Component P&Ls from backend:', data.component_pnls);
+                        }
+                        
                         updateTotalTradePnL();
                     } else {
                         throw new Error(data.error || 'Failed to calculate P&L');
                     }
                 })
                 .catch(error => {
-                    console.error('❌ Error:', error);
+                    console.error('❌ ERROR in position change flow:', error);
+                    console.error('❌ Error stack:', error.stack);
                     pnlDisplay.textContent = 'Error';
                     pnlDisplay.style.color = '#ff6b6b';
                     updateTotalTradePnL();
                 });
             } else {
+                console.log('⚠️ Invalid data - clearing P&L display');
                 pnlDisplay.textContent = '--';
                 pnlDisplay.style.color = '#cccccc';
                 updateTotalTradePnL();
             }
+            
+            console.log('🔥 =================================== HANDLE POSITION CHANGE END =====================================');
         }
         
         // Function to calculate and display total trade P&L
