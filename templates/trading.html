@@ -1438,13 +1438,22 @@
                 if (data.success) {
                     portfolioBackup = JSON.parse(JSON.stringify(data));
                     console.log('✅ Portfolio backup created:', Object.keys(portfolioBackup.trades || {}).length, 'trades');
+                    
+                    // IMPORTANT: Only proceed after backup is created
+                    proceedWithModalOpening(tradeId);
                 } else {
                     console.error('❌ Failed to backup portfolio:', data.error);
+                    alert('Error creating portfolio backup. Please try again.');
                 }
             })
             .catch(error => {
                 console.error('❌ Error creating portfolio backup:', error);
+                alert('Error creating portfolio backup: ' + error.message);
             });
+        }
+        
+        function proceedWithModalOpening(tradeId) {
+            console.log('🚀 Proceeding with modal opening after backup created');
             
             // Show the modal
             document.getElementById('tradeModal').style.display = 'block';
