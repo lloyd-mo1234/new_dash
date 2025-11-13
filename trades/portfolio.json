@@ -1,7 +1,7 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-13T14:35:22.447620",
-    "total_portfolio_pnl": 796211.6261660978
+    "last_pnl_update": "2025-11-13T15:02:29.985735",
+    "total_portfolio_pnl": 860327.5803547204
   },
   "trades": {
     "trade1": {
@@ -10,7 +10,7 @@
         "swap"
       ],
       "secondary_typology": null,
-      "group_id": null,
+      "group_id": "test1",
       "prices": [
         5
       ],
@@ -20,8 +20,8 @@
       "instrument_details": [
         "aud.5y5y"
       ],
-      "stored_pnl": 664191.7577583194,
-      "pnl_timestamp": "2025-11-13T14:35:22.447620",
+      "stored_pnl": 692540.8534575477,
+      "pnl_timestamp": "2025-11-13T15:02:29.985735",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],
@@ -34,7 +34,7 @@
         "swap"
       ],
       "secondary_typology": null,
-      "group_id": null,
+      "group_id": "test2",
       "prices": [
         5.25
       ],
@@ -44,8 +44,8 @@
       "instrument_details": [
         "aud.10y10y"
       ],
-      "stored_pnl": 132019.86840777844,
-      "pnl_timestamp": "2025-11-13T14:35:22.447620",
+      "stored_pnl": 167786.72689717263,
+      "pnl_timestamp": "2025-11-13T15:02:29.985735",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],

@@ -1903,6 +1903,9 @@ def restore_portfolio():
             trade.stored_pnl_secondary = trade_data.get('stored_pnl_secondary', 0.0)
             trade.pnl_timestamp = trade_data.get('pnl_timestamp')
             
+            # CRITICAL FIX: Restore group_id field
+            trade.group_id = trade_data.get('group_id')
+            
             # Add to portfolio
             portfolio.trades[trade_id] = trade
         
