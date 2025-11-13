@@ -692,8 +692,12 @@
     <div id="tradeModal" class="modal">
         <div class="modal-content" style="max-width: 800px; width: 90%;">
             <span class="close" onclick="closeTradeModal()">&times;</span>
-            <div style="display: flex; align-items: center; margin-bottom: 20px; position: relative;">
-                <input type="text" id="modalTitle" placeholder="Enter trade identifier..." style="background: transparent; border: none; color: #ffffff; font-size: 1.17em; font-weight: bold; width: 100%; margin: 0; padding: 5px; border-bottom: 1px solid #444;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; position: relative;">
+                <input type="text" id="modalTitle" placeholder="Enter trade identifier..." style="background: transparent; border: none; color: #ffffff; font-size: 1.17em; font-weight: bold; flex: 1; margin: 0; padding: 5px; border-bottom: 1px solid #444;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-left: 20px;">
+                    <label style="color: #ffffff; font-size: 12px; white-space: nowrap;">Group ID:</label>
+                    <input type="text" id="singleGroupId" placeholder="Group ID" style="background: transparent; border: none; color: #00d4ff; font-size: 12px; padding: 5px; border-bottom: 1px solid #444; width: 120px;">
+                </div>
                 <div id="errorBanner" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #dc3545; color: white; padding: 5px 10px; font-size: 12px; border-radius: 0 0 4px 4px; z-index: 1000;"></div>
             </div>
             
@@ -720,7 +724,7 @@
                         <thead>
                             <tr>
                                 <th style="width: 80px;">Type</th>
-                                <th style="width: 350px;">Expression</th>
+                                <th style="width: 400px;">Expression</th>
                                 <th style="width: 80px;">Live Rate</th>
                                 <th style="width: 90px;">Total P&L</th>
                             </tr>
@@ -1745,12 +1749,12 @@
                 <td>
                     <span style="color: #888; padding: 4px 8px; font-size: 11px;">Futures</span>
                 </td>
-                <td>
-                    <input type="text" class="modal-instrument-secondary" id="secondaryInstrument" placeholder="e.g., xmz5 comdty-ymz5 comdty" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
-                </td>
-                <td>
-                    <span class="live-rate-display" id="secondaryLiveRate" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 75px; text-align: center;">--</span>
-                </td>
+                            <td>
+                                <input type="text" class="modal-instrument-secondary" id="secondaryInstrument" placeholder="e.g., xmz5 comdty-ymz5 comdty" onchange="updateLiveRate(this)" oninput="updateLiveRate(this)" onblur="updateLiveRate(this)">
+                            </td>
+                            <td>
+                                <span class="live-rate-display" id="secondaryLiveRate" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 75px; text-align: center;">--</span>
+                            </td>
                 <td>
                     <span class="total-pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
                 </td>
@@ -1766,12 +1770,12 @@
                 <td style="background: transparent !important; border-bottom: none !important;">
                     <span style="color: #00d4ff; padding: 4px 8px; font-size: 11px; font-weight: bold;">Total</span>
                 </td>
-                <td style="background: transparent !important; border-bottom: none !important;">
-                    <span style="color: #888; padding: 4px 8px; font-size: 11px;">Spread</span>
-                </td>
-                <td style="background: transparent !important; border-bottom: none !important;">
-                    <span class="spread-display" id="efpSpread" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 75px; text-align: center;">--</span>
-                </td>
+                            <td style="background: transparent !important; border-bottom: none !important;">
+                                <span style="color: #888; padding: 4px 8px; font-size: 11px;">Spread</span>
+                            </td>
+                            <td style="background: transparent !important; border-bottom: none !important;">
+                                <span class="spread-display" id="efpSpread" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 75px; text-align: center;">--</span>
+                            </td>
                 <td style="background: transparent !important; border-bottom: none !important;">
                     <span class="total-pnl-display" id="efpTotalPnL" style="background: transparent !important; color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 70px; text-align: center;">--</span>
                 </td>
@@ -1803,6 +1807,13 @@
             
             // Clear modal title
             document.getElementById('modalTitle').value = '';
+            
+            // CRITICAL FIX: Clear Group ID field
+            const groupIdInput = document.getElementById('singleGroupId');
+            if (groupIdInput) {
+                groupIdInput.value = '';
+                console.log('🧹 Cleared Group ID field');
+            }
             
             // Reset position counter
             positionCounter = 0;
@@ -2483,10 +2494,14 @@
             const primaryTypeSelect = primaryRow.querySelector('select.modal-trade-type');
             const primaryInstrumentInput = primaryRow.querySelector('input.modal-instrument');
             
+            // Group ID is now in the top section, not in the table
+            const groupIdInput = document.getElementById('singleGroupId');
+            
             const primaryType = primaryTypeSelect ? primaryTypeSelect.value.trim() : '';
             const primaryInstrument = primaryInstrumentInput ? primaryInstrumentInput.value.trim() : '';
+            const groupId = groupIdInput ? groupIdInput.value.trim() : '';
             
-            console.log('📊 Primary:', { type: primaryType, instrument: primaryInstrument });
+            console.log('📊 Primary:', { type: primaryType, instrument: primaryInstrument, groupId: groupId });
             
             // Check if it's an EFP trade - collect secondary row if present
             let secondaryType = null;
@@ -2664,7 +2679,8 @@
                     entry_prices: entryPositions.map(p => p.price),
                     entry_sizes: entryPositions.map(p => p.size),
                     exit_prices: exitPositions.map(p => p.price),
-                    exit_sizes: exitPositions.map(p => p.size)
+                    exit_sizes: exitPositions.map(p => p.size),
+                    group_id: groupId
                 };
                 
                 
@@ -2765,7 +2781,8 @@
                     entry_prices: entryPositions.map(p => p.price),
                     entry_sizes: entryPositions.map(p => p.size),
                     exit_prices: exitPositions.map(p => p.price),
-                    exit_sizes: exitPositions.map(p => p.size)
+                    exit_sizes: exitPositions.map(p => p.size),
+                    group_id: groupId
                 };
                 
                 // Add secondary positions for EFP trades
@@ -3002,6 +3019,9 @@
                     const typeSelect = primaryRow.querySelector('.modal-trade-type');
                     const instrumentInput = primaryRow.querySelector('.modal-instrument');
                     
+                    // Group ID is now in the top section
+                    const groupIdInput = document.getElementById('singleGroupId');
+                    
                     if (typeSelect) {
                         typeSelect.value = typologies[0];
                         console.log(`✅ Set primary type: "${typologies[0]}"`);
@@ -3009,6 +3029,10 @@
                     if (instrumentInput) {
                         instrumentInput.value = instruments[0];
                         console.log(`✅ Set primary instrument: "${instruments[0]}"`);
+                    }
+                    if (groupIdInput && trade.group_id) {
+                        groupIdInput.value = trade.group_id;
+                        console.log(`✅ Set group ID: "${trade.group_id}"`);
                     }
                     
                     // Trigger handleTypeChange if EFP to show secondary sections
@@ -3262,6 +3286,7 @@
             })
             .then(data => {
                 console.log('📊 Backend data:', data);
+                console.log('📂 COMPLETE PORTFOLIO OBJECT:', JSON.stringify(data, null, 2));
                 
                 if (data.success) {
                     // Clear local storage

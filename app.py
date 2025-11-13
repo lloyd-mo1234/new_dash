@@ -967,6 +967,9 @@ def add_trade():
         typologies = data.get('typologies', [])
         instruments = data.get('instruments', [])
         
+        # CRITICAL FIX: Extract group_id from request data
+        group_id = data.get('group_id')
+        
         # For EFP trades, separate primary and secondary data
         primary_typology = typologies[0] if len(typologies) > 0 else None
         secondary_typology = typologies[1] if len(typologies) > 1 else None
@@ -974,11 +977,12 @@ def add_trade():
         primary_instrument = instruments[0] if len(instruments) > 0 else None
         secondary_instrument = instruments[1] if len(instruments) > 1 else None
         
-        # Create new trade
+        # Create new trade with group_id
         trade = Trade(
             trade_id=trade_id,
             typology=primary_typology,
-            secondary_typology=secondary_typology
+            secondary_typology=secondary_typology,
+            group_id=group_id
         )
         
         # Set instrument details - for EFP trades, separate primary and secondary instruments
@@ -1061,9 +1065,28 @@ def add_trade():
 def get_trades():
     """Get all trades in the portfolio with stored P&L data"""
     try:
+        print("🔄 ===== LOADING TRADES FROM PORTFOLIO OBJECT =====")
+        print(f"📊 Portfolio object details:")
+        print(f"   - Total trades in portfolio: {len(portfolio.trades)}")
+        print(f"   - Portfolio storage file: {portfolio.storage_file}")
+        print(f"   - Portfolio last P&L update: {getattr(portfolio, 'last_pnl_update', 'None')}")
+        print(f"   - Portfolio total P&L: {getattr(portfolio, 'total_portfolio_pnl', 0.0)}")
+        
         trades_data = {}
         
         for trade_id, trade in portfolio.trades.items():
+            # Log each trade with group_id information
+            group_id = getattr(trade, 'group_id', None)
+            print(f"📋 Trade: {trade_id}")
+            print(f"   - Group ID: {group_id}")
+            print(f"   - Typology: {trade.typology}")
+            print(f"   - Secondary Typology: {trade.secondary_typology}")
+            print(f"   - Instrument Details: {trade.instrument_details}")
+            print(f"   - Prices: {trade.prices}")
+            print(f"   - Sizes: {trade.sizes}")
+            print(f"   - Stored P&L: {getattr(trade, 'stored_pnl', 0.0)}")
+            print(f"   - P&L Timestamp: {getattr(trade, 'pnl_timestamp', None)}")
+            
             # Use stored P&L instead of calculating every time
             stored_pnl = getattr(trade, 'stored_pnl', 0.0)
             pnl_timestamp = getattr(trade, 'pnl_timestamp', None)
@@ -1072,6 +1095,7 @@ def get_trades():
                 'trade_id': trade.trade_id,
                 'typology': trade.typology,
                 'secondary_typology': trade.secondary_typology,
+                'group_id': group_id,  # Include group_id in response
                 'instrument_details': trade.instrument_details,
                 'prices': trade.prices,
                 'sizes': trade.sizes,
@@ -1086,6 +1110,9 @@ def get_trades():
             'total_portfolio_pnl': getattr(portfolio, 'total_portfolio_pnl', 0.0)
         }
         
+        print("🔄 ===== PORTFOLIO OBJECT LOADING COMPLETE =====")
+        print(f"📤 Returning {len(trades_data)} trades to frontend")
+        
         return jsonify({
             'success': True,
             'trades': trades_data,
@@ -1093,6 +1120,7 @@ def get_trades():
         })
         
     except Exception as e:
+        print(f"❌ Error in get_trades: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get_trade_details/<trade_id>')
@@ -1141,6 +1169,10 @@ def update_trade():
         # Update basic info if provided
         typologies = data.get('typologies', [])
         instruments = data.get('instruments', [])
+        
+        # CRITICAL FIX: Extract and update group_id from request data
+        if 'group_id' in data:
+            trade.group_id = data.get('group_id')
         
         # For EFP trades, separate primary and secondary data
         if typologies:

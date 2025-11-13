@@ -420,11 +420,12 @@ class XCFuturesPosition:
 class Trade:
     """Object representing a single trade with XC swap positions"""
     
-    def __init__(self, trade_id: str, typology=None, secondary_typology: str = None, is_temporary: bool = False):
+    def __init__(self, trade_id: str, typology=None, secondary_typology: str = None, is_temporary: bool = False, group_id: str = None):
         self.trade_id = trade_id
         self.typology = typology if isinstance(typology, list) else [typology] if typology else []  # List of trade types
         self.secondary_typology = secondary_typology  # for EFP trades (e.g., 'futures')
         self.is_temporary = is_temporary  # Flag to mark unsaved trades
+        self.group_id = group_id  # Group ID field for trade grouping
         
         # For EFP trades, we have dual data structures:
         # Primary (swap) and Secondary (futures)
@@ -748,6 +749,7 @@ class Portfolio:
                     'trade_id': trade.trade_id,
                     'typology': trade.typology,
                     'secondary_typology': secondary_typology,
+                    'group_id': getattr(trade, 'group_id', None),
                     'prices': trade.prices,
                     'sizes': trade.sizes,
                     'instrument_details': trade.instrument_details,
@@ -799,7 +801,8 @@ class Portfolio:
                     trade = Trade(
                         trade_data['trade_id'],
                         trade_data['typology'],
-                        trade_data.get('secondary_typology')
+                        trade_data.get('secondary_typology'),
+                        group_id=trade_data.get('group_id')
                     )
                     
                     # Handle both old format (entry/exit arrays) and new format (prices/sizes arrays)
@@ -1001,6 +1004,7 @@ class Portfolio:
         return {
             "trade_id": trade.trade_id,
             "typology": trade.typology,
+            "group_id": getattr(trade, 'group_id', None),
             "instrument_details": trade.instrument_details,
             "prices": trade.prices,
             "sizes": trade.sizes,
