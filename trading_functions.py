@@ -851,12 +851,18 @@ class Trade:
                 print(f"   Price: {price}")
                 print(f"   Size: {size}")
                 
+                # Get insertion date for this position
+                insertion_date = None
+                if hasattr(self, 'primary_pos_insertion_dt') and i < len(self.primary_pos_insertion_dt):
+                    insertion_date = self.primary_pos_insertion_dt[i]
+                    print(f"   Insertion date: {insertion_date}")
+                
                 position = XCSwapPosition(
                     handle=handle,
                     price=price,
                     size=size,
                     instrument=instrument,
-                    insertion_date=getattr(self, 'insertion_date', None)
+                    insertion_date=insertion_date
                 )
                 
                 if position.create_xc_swaps():
@@ -877,12 +883,18 @@ class Trade:
                 print(f"   Price: {price}")
                 print(f"   Size: {size}")
                 
+                # Get insertion date for this position
+                insertion_date = None
+                if hasattr(self, 'primary_pos_insertion_dt') and i < len(self.primary_pos_insertion_dt):
+                    insertion_date = self.primary_pos_insertion_dt[i]
+                    print(f"   Insertion date: {insertion_date}")
+                
                 position = XCFuturesPosition(
                     handle=handle,
                     price=price,
                     size=size,
                     instrument=instrument,
-                    insertion_date=getattr(self, 'insertion_date', None)
+                    insertion_date=insertion_date
                 )
                 
                 if position.build_futures_expression():
@@ -2178,14 +2190,16 @@ def get_futures_instrument_names(portfolio) -> List[str]:
         print(f"❌ Error extracting futures instrument names: {e}")
         return []
 
-def get_futures_history(portfolio, start_date: str, end_date: str) -> pd.DataFrame:
+def get_futures_history(portfolio) -> pd.DataFrame:
     """
     Get historical futures prices using Bloomberg BDH
     
+    Automatically determines date range:
+    - Start date: Earliest insertion date across all positions in the portfolio
+    - End date: Today
+    
     Args:
         portfolio: Portfolio object containing trades
-        start_date: Start date in 'YYYYMMDD' or 'YYYY-MM-DD' format
-        end_date: End date in 'YYYYMMDD' or 'YYYY-MM-DD' format
     
     Returns:
         DataFrame with:
@@ -2194,6 +2208,43 @@ def get_futures_history(portfolio, start_date: str, end_date: str) -> pd.DataFra
         - Values: historical prices (px_last)
     """
     try:
+        # Find the earliest insertion date across all trades' positions
+        earliest_date = None
+        
+        for trade in portfolio.trades.values():
+            # Check primary positions
+            if hasattr(trade, 'primary_pos_insertion_dt'):
+                for date_str in trade.primary_pos_insertion_dt:
+                    if date_str:
+                        try:
+                            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                            if earliest_date is None or date_obj < earliest_date:
+                                earliest_date = date_obj
+                        except:
+                            pass
+            
+            # Check secondary positions (for EFP trades)
+            if hasattr(trade, 'secondary_pos_insertion_dt'):
+                for date_str in trade.secondary_pos_insertion_dt:
+                    if date_str:
+                        try:
+                            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                            if earliest_date is None or date_obj < earliest_date:
+                                earliest_date = date_obj
+                        except:
+                            pass
+        
+        # Use earliest date or fall back to 30 days ago
+        if earliest_date:
+            start_date = earliest_date.strftime('%Y%m%d')
+            print(f"📅 Using earliest insertion date as start: {start_date}")
+        else:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
+            print(f"📅 No insertion dates found, using 30-day lookback: {start_date}")
+        
+        # End date is today
+        end_date = datetime.now().strftime('%Y%m%d')
+        
         print(f"📊 Getting futures historical data from {start_date} to {end_date}")
         
         # Get all futures instrument names from the portfolio
