@@ -17,7 +17,8 @@ class XCSwapPosition:
     """Represents a complex XC swap position that can contain multiple StandardSwap objects"""
     
     def __init__(self, handle: str, price: float, size: float, 
-                 instrument: str, component_rates: Dict[str, float] = None):
+                 instrument: str, component_rates: Dict[str, float] = None, 
+                 insertion_date: str = None):
         self.handle = handle
         self.price = price  # As decimal (e.g., 0.0314) - this is the spread price
         self.size = size    # In millions
@@ -28,6 +29,7 @@ class XCSwapPosition:
         self.xc_swaps = []  # List of individual XC StandardSwap handles
         self.xc_created = False
         self.last_pnl = 0.0
+        self.insertion_date = insertion_date or datetime.now().strftime('%Y-%m-%d')  # Default to today
         
     def create_xc_swaps(self):
         """Create multiple XC StandardSwap objects for complex expressions"""
@@ -232,7 +234,8 @@ class XCFuturesPosition:
     """Represents a futures position for P&L calculation"""
     
     def __init__(self, handle: str, price: float, size, 
-                 instrument: str, component_rates: Dict[str, float] = None):
+                 instrument: str, component_rates: Dict[str, float] = None,
+                 insertion_date: str = None):
         self.handle = handle
         self.price = price  # Entry price (can be spread price for expressions)
         # Size can be either:
@@ -241,6 +244,7 @@ class XCFuturesPosition:
         self.size = size
         self.instrument = instrument  # Futures instrument name or expression
         self.last_pnl = 0.0
+        self.insertion_date = insertion_date or datetime.now().strftime('%Y-%m-%d')  # Default to today
         
         # New attributes for handling futures expressions
         self.components = []  # List of component dictionaries (instrument, coefficient)
@@ -440,6 +444,10 @@ class Trade:
         self.instrument_details_secondary = []  # Secondary instruments (futures expressions for EFP)
         self.positions_secondary = []  # Secondary positions (XCFuturesPosition objects for EFP)
         
+        # Position insertion dates arrays
+        self.primary_pos_insertion_dt = []  # Insertion dates for primary positions
+        self.secondary_pos_insertion_dt = []  # Insertion dates for secondary positions
+        
         self.pnl = 0
         self.positions_pnl = 0
         
@@ -519,11 +527,17 @@ class Trade:
                     print(f"   Price: {price}")
                     print(f"   Size (PV01): {size}")
                     
+                    # Get insertion date for this position
+                    insertion_date = None
+                    if hasattr(self, 'primary_pos_insertion_dt') and i < len(self.primary_pos_insertion_dt):
+                        insertion_date = self.primary_pos_insertion_dt[i]
+                    
                     position = XCSwapPosition(
                         handle=handle,
                         price=price,
                         size=size,
-                        instrument=instrument
+                        instrument=instrument,
+                        insertion_date=insertion_date
                     )
                     
                     if position.create_xc_swaps():
@@ -544,11 +558,17 @@ class Trade:
                     print(f"   Price: {price}")
                     print(f"   Size: {size}")
                     
+                    # Get insertion date for this position
+                    insertion_date = None
+                    if hasattr(self, 'secondary_pos_insertion_dt') and i < len(self.secondary_pos_insertion_dt):
+                        insertion_date = self.secondary_pos_insertion_dt[i]
+                    
                     position = XCFuturesPosition(
                         handle=handle,
                         price=price,
                         size=size,
-                        instrument=instrument
+                        instrument=instrument,
+                        insertion_date=insertion_date
                     )
                     
                     if position.build_futures_expression():
@@ -576,7 +596,8 @@ class Trade:
                     handle=handle,
                     price=price,
                     size=size,
-                    instrument=instrument
+                    instrument=instrument,
+                    insertion_date=getattr(self, 'insertion_date', None)
                 )
                 
                 if position.create_xc_swaps():
@@ -601,7 +622,8 @@ class Trade:
                     handle=handle,
                     price=price,
                     size=size,
-                    instrument=instrument
+                    instrument=instrument,
+                    insertion_date=getattr(self, 'insertion_date', None)
                 )
                 
                 if position.build_futures_expression():
@@ -761,8 +783,18 @@ class Portfolio:
                     'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', []),
                     # Include separate P&L values for EFP trades
                     'stored_pnl_primary': getattr(trade, 'stored_pnl_primary', None),
-                    'stored_pnl_secondary': getattr(trade, 'stored_pnl_secondary', None)
+                    'stored_pnl_secondary': getattr(trade, 'stored_pnl_secondary', None),
+                    # Include insertion date arrays
+                    'primary_pos_insertion_dt': getattr(trade, 'primary_pos_insertion_dt', []),
+                    'secondary_pos_insertion_dt': getattr(trade, 'secondary_pos_insertion_dt', [])
                 }
+                
+                # 🐛 DEBUG: Log insertion dates being saved to JSON
+                primary_dates = getattr(trade, 'primary_pos_insertion_dt', [])
+                secondary_dates = getattr(trade, 'secondary_pos_insertion_dt', [])
+                print(f'🐛 DEBUG [save_to_file] - Saving insertion dates for trade {trade_id}:')
+                print(f'   - primary_pos_insertion_dt: {primary_dates}')
+                print(f'   - secondary_pos_insertion_dt: {secondary_dates}')
                 
                 data['trades'][trade_id] = trade_data
             
@@ -834,6 +866,10 @@ class Portfolio:
                     # Load stored P&L data (new format)
                     trade.stored_pnl = trade_data.get('stored_pnl', 0.0)
                     trade.pnl_timestamp = trade_data.get('pnl_timestamp')
+                    
+                    # Load insertion date arrays
+                    trade.primary_pos_insertion_dt = trade_data.get('primary_pos_insertion_dt', [])
+                    trade.secondary_pos_insertion_dt = trade_data.get('secondary_pos_insertion_dt', [])
                     
                     self.trades[trade.trade_id] = trade
                 
@@ -1000,7 +1036,6 @@ class Portfolio:
             pnl = trade.calculate_pnl()
             pnl["method"] = "calculated_on_demand"
             print(f"🧮 Calculated P&L on-demand for {trade_id}: ${pnl.get('total_pnl', 0):,.2f}")
-        
         return {
             "trade_id": trade.trade_id,
             "typology": trade.typology,
@@ -1012,7 +1047,10 @@ class Portfolio:
             # Add secondary data structures for EFP trades
             "prices_secondary": getattr(trade, 'prices_secondary', []),
             "sizes_secondary": getattr(trade, 'sizes_secondary', []),
-            "instrument_details_secondary": getattr(trade, 'instrument_details_secondary', [])
+            "instrument_details_secondary": getattr(trade, 'instrument_details_secondary', []),
+            # CRITICAL FIX: Include insertion date arrays
+            "primary_pos_insertion_dt": getattr(trade, 'primary_pos_insertion_dt', []),
+            "secondary_pos_insertion_dt": getattr(trade, 'secondary_pos_insertion_dt', [])
         }
 
     def update_realtime_pnl(self) -> Dict[str, Any]:

@@ -613,6 +613,55 @@
         .trades-grid tbody tr:hover {
             background: #2a2a2a;
         }
+        
+        /* Group styling for collapsible trade groups */
+        .trade-group-header {
+            background: #1a1a1a !important;
+            border-left: 3px solid #00d4ff;
+        }
+        
+        .trade-group-header td {
+            font-weight: bold;
+            background: #1a1a1a !important;
+            padding: 4px 8px !important;
+            font-size: 12px !important;
+            text-align: left !important;
+        }
+        
+        
+        .trade-group-header:hover {
+            background: #2a2a2a !important;
+        }
+        
+        .trade-group-header .group-arrow {
+            font-size: 12px;
+            color: #00d4ff;
+            margin-right: 8px;
+            transition: transform 0.2s ease;
+            display: inline-block;
+        }
+        
+        .trade-group-header .group-arrow.collapsed {
+            transform: rotate(-90deg);
+        }
+        
+        .trade-group-member {
+            border-left: 3px solid #444;
+        }
+        
+        .trade-group-member td {
+            padding-left: 20px !important;
+        }
+        
+        .trade-group-member.hidden {
+            display: none;
+        }
+        
+        .group-summary {
+            color: #888;
+            font-size: 11px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -644,7 +693,7 @@
                 <table class="trades-grid" id="tradesGrid">
                     <thead>
                         <tr>
-                            <th style="width: 60px;">Type</th>
+                            <th style="width: 90px;">Type</th>
                             <th style="width: 150px;">Identifier</th>
                             <th style="width: 200px;">Expression</th>
                             <th style="width: 80px;">Avg Entry</th>
@@ -792,6 +841,7 @@
                                 <tr>
                                     <th>Price</th>
                                     <th id="primarySizeHeader">01</th>
+                                    <th>Insertion Date</th>
                                     <th>P&L</th>
                                 </tr>
                             </thead>
@@ -815,6 +865,7 @@
                                 <tr>
                                     <th>Price</th>
                                     <th id="secondarySizeHeader">Lots</th>
+                                    <th>Insertion Date</th>
                                     <th>P&L</th>
                                 </tr>
                             </thead>
@@ -2008,6 +2059,10 @@
                            onchange="handlePositionChange(this)" step="0.01">
                 </td>
                 ${sizeCell}
+                <td>
+                    <input type="date" data-position-insertion-date="${positionId}" value="${new Date().toISOString().split('T')[0]}"
+                           onchange="handlePositionChange(this)" style="width: 100px; font-size: 11px;">
+                </td>
                 <td style="position: relative;">
                     <span class="pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
                     <button class="btn-remove" onclick="removePosition(this)" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%);">remove</button>
@@ -2536,6 +2591,7 @@
             
             // Collect PRIMARY positions (swap leg for EFP, or main positions for other types)
             const primaryPositions = [];
+            const primaryInsertionDates = [];
             const primaryRows = document.getElementById('positionsTableBody').querySelectorAll('tr');
             
             console.log('🔍 Found', primaryRows.length, 'PRIMARY position rows to process');
@@ -2545,6 +2601,12 @@
                 
                 const priceInput = row.querySelector('[data-position-price]');
                 const price = priceInput ? priceInput.value.trim() : '';
+                
+                // CRITICAL FIX: Collect insertion date from each position row
+                const insertionDateInput = row.querySelector('[data-position-insertion-date]');
+                const insertionDate = insertionDateInput ? insertionDateInput.value.trim() : '';
+                
+                console.log(`  📅 Insertion date for PRIMARY position ${rowIndex + 1}:`, insertionDate || 'not set');
                 
                 if (price) {
                     const sizeInputs = row.querySelectorAll('[data-position-size]');
@@ -2568,7 +2630,8 @@
                                 price: parseFloat(price),
                                 size: componentSizes
                             });
-                            console.log(`  ✅ Added PRIMARY position with multiple sizes:`, { price: parseFloat(price), size: componentSizes });
+                            primaryInsertionDates.push(insertionDate || null);
+                            console.log(`  ✅ Added PRIMARY position with multiple sizes:`, { price: parseFloat(price), size: componentSizes, insertionDate: insertionDate });
                         }
                     } else {
                         // Single size input
@@ -2580,16 +2643,19 @@
                                 price: parseFloat(price),
                                 size: parseFloat(size)
                             });
-                            console.log(`  ✅ Added PRIMARY position with single size:`, { price: parseFloat(price), size: parseFloat(size) });
+                            primaryInsertionDates.push(insertionDate || null);
+                            console.log(`  ✅ Added PRIMARY position with single size:`, { price: parseFloat(price), size: parseFloat(size), insertionDate: insertionDate });
                         }
                     }
                 }
             });
             
             console.log('📋 Total PRIMARY positions collected:', primaryPositions);
+            console.log('📅 Total PRIMARY insertion dates collected:', primaryInsertionDates);
             
             // Collect SECONDARY positions (futures leg for EFP only)
             const secondaryPositions = [];
+            const secondaryInsertionDates = [];
             if (primaryType === 'efp') {
                 const secondaryRows = document.getElementById('secondaryPositionsTableBody').querySelectorAll('tr');
                 console.log('🔍 Found', secondaryRows.length, 'SECONDARY position rows to process');
@@ -2599,6 +2665,12 @@
                     
                     const priceInput = row.querySelector('[data-position-price]');
                     const price = priceInput ? priceInput.value.trim() : '';
+                    
+                    // CRITICAL FIX: Collect insertion date from each secondary position row
+                    const insertionDateInput = row.querySelector('[data-position-insertion-date]');
+                    const insertionDate = insertionDateInput ? insertionDateInput.value.trim() : '';
+                    
+                    console.log(`  📅 Insertion date for SECONDARY position ${rowIndex + 1}:`, insertionDate || 'not set');
                     
                     if (price) {
                         const sizeInputs = row.querySelectorAll('[data-position-size]');
@@ -2622,7 +2694,8 @@
                                     price: parseFloat(price),
                                     size: componentSizes
                                 });
-                                console.log(`  ✅ Added SECONDARY position with multiple sizes:`, { price: parseFloat(price), size: componentSizes });
+                                secondaryInsertionDates.push(insertionDate || null);
+                                console.log(`  ✅ Added SECONDARY position with multiple sizes:`, { price: parseFloat(price), size: componentSizes, insertionDate: insertionDate });
                             }
                         } else {
                             // Single size input
@@ -2634,13 +2707,15 @@
                                     price: parseFloat(price),
                                     size: parseFloat(size)
                                 });
-                                console.log(`  ✅ Added SECONDARY position with single size:`, { price: parseFloat(price), size: parseFloat(size) });
+                                secondaryInsertionDates.push(insertionDate || null);
+                                console.log(`  ✅ Added SECONDARY position with single size:`, { price: parseFloat(price), size: parseFloat(size), insertionDate: insertionDate });
                             }
                         }
                     }
                 });
                 
                 console.log('📋 Total SECONDARY positions collected:', secondaryPositions);
+                console.log('📅 Total SECONDARY insertion dates collected:', secondaryInsertionDates);
             }
             
             // For non-EFP trades, use primary positions as entry positions
@@ -2680,15 +2755,19 @@
                     entry_sizes: entryPositions.map(p => p.size),
                     exit_prices: exitPositions.map(p => p.price),
                     exit_sizes: exitPositions.map(p => p.size),
-                    group_id: groupId
+                    group_id: groupId,
+                    entry_insertion_dates: primaryInsertionDates
                 };
                 
+                console.log('📅 Including primary insertion dates:', primaryInsertionDates);
                 
                 // Add secondary positions for EFP trades
                 if (entryPositionsSecondary && entryPositionsSecondary.length > 0) {
                     updateData.entry_prices_secondary = entryPositionsSecondary.map(p => p.price);
                     updateData.entry_sizes_secondary = entryPositionsSecondary.map(p => p.size);
+                    updateData.entry_insertion_dates_secondary = secondaryInsertionDates;
                     console.log('📊 Including secondary positions:', updateData.entry_prices_secondary, updateData.entry_sizes_secondary);
+                    console.log('📅 Including secondary insertion dates:', secondaryInsertionDates);
                 }
                 
                 fetch('/update_trade', {
@@ -2782,14 +2861,19 @@
                     entry_sizes: entryPositions.map(p => p.size),
                     exit_prices: exitPositions.map(p => p.price),
                     exit_sizes: exitPositions.map(p => p.size),
-                    group_id: groupId
+                    group_id: groupId,
+                    entry_insertion_dates: primaryInsertionDates
                 };
+                
+                console.log('📅 Including primary insertion dates:', primaryInsertionDates);
                 
                 // Add secondary positions for EFP trades
                 if (entryPositionsSecondary && entryPositionsSecondary.length > 0) {
                     submitData.entry_prices_secondary = entryPositionsSecondary.map(p => p.price);
                     submitData.entry_sizes_secondary = entryPositionsSecondary.map(p => p.size);
+                    submitData.entry_insertion_dates_secondary = secondaryInsertionDates;
                     console.log('📊 Including secondary positions:', submitData.entry_prices_secondary, submitData.entry_sizes_secondary);
+                    console.log('📅 Including secondary insertion dates:', secondaryInsertionDates);
                 }
                 
                 fetch('/add_trade', {
@@ -2862,74 +2946,207 @@
             const tbody = document.getElementById('tradesGridBody');
             tbody.innerHTML = '';
             
+            // Group trades by group_id
+            const groupedTrades = {};
+            const ungroupedTrades = [];
+            
             storedTrades.forEach(trade => {
-                const row = document.createElement('tr');
-                
-                // Display single total P&L for all trade types
-                let pnlDisplay, pnlColor;
-                
+                if (trade.groupId && trade.groupId.trim()) {
+                    const groupId = trade.groupId.trim();
+                    if (!groupedTrades[groupId]) {
+                        groupedTrades[groupId] = [];
+                    }
+                    groupedTrades[groupId].push(trade);
+                } else {
+                    ungroupedTrades.push(trade);
+                }
+            });
+            
+            // Display grouped trades first
+            Object.keys(groupedTrades).forEach(groupId => {
+                const trades = groupedTrades[groupId];
+                displayTradeGroup(tbody, groupId, trades);
+            });
+            
+            // Display ungrouped trades
+            ungroupedTrades.forEach(trade => {
+                displaySingleTrade(tbody, trade, false);
+            });
+        }
+        
+        function displayTradeGroup(tbody, groupId, trades) {
+            // Calculate group totals
+            let groupTotalPnL = 0;
+            let groupTotalSize = 0;
+            let groupPnLColor = '#00d4ff';
+            
+            trades.forEach(trade => {
+                // Calculate P&L for each trade in group
+                let tradePnL = 0;
                 if (trade.type === 'efp' && (trade.storedPnLPrimary !== undefined || trade.storedPnLSecondary !== undefined)) {
-                    // EFP: Calculate total P&L from swap + futures
                     const primaryPnL = trade.storedPnLPrimary !== undefined ? trade.storedPnLPrimary : 0;
                     const secondaryPnL = trade.storedPnLSecondary !== undefined ? trade.storedPnLSecondary : 0;
-                    const totalPnL = primaryPnL + secondaryPnL;
-                    
-                    console.log(`💰 EFP Display - Primary: ${primaryPnL}, Secondary: ${secondaryPnL}, Total: ${totalPnL}`);
-                    
-                    // Format as currency
-                    pnlDisplay = `$${totalPnL.toLocaleString('en-US', {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0
-                    })}`;
-                    
-                    // Determine color based on total P&L
-                    if (totalPnL > 0) {
-                        pnlColor = '#51cf66'; // Green for profit
-                    } else if (totalPnL < 0) {
-                        pnlColor = '#ff6b6b'; // Red for loss
-                    } else {
-                        pnlColor = '#00d4ff'; // Aqua for zero
-                    }
+                    tradePnL = primaryPnL + secondaryPnL;
+                } else if (trade.storedPnL && trade.storedPnL !== '--' && trade.storedPnL !== 'No curves') {
+                    tradePnL = parseFloat(trade.storedPnL.replace(/[$,]/g, '')) || 0;
+                }
+                
+                groupTotalPnL += tradePnL;
+                groupTotalSize += trade.totalSize || 0;
+            });
+            
+            // Determine group P&L color
+            if (groupTotalPnL > 0) {
+                groupPnLColor = '#51cf66'; // Green for profit
+            } else if (groupTotalPnL < 0) {
+                groupPnLColor = '#ff6b6b'; // Red for loss
+            }
+            
+            const groupPnLDisplay = `$${groupTotalPnL.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            })}`;
+            
+            // Create group header row
+            const groupHeaderRow = document.createElement('tr');
+            groupHeaderRow.className = 'trade-group-header';
+            groupHeaderRow.innerHTML = `
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">
+                    <span class="group-arrow" id="group-arrow-${groupId}">▼</span>Group
+                </td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">${groupId}</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">
+                    <span class="group-summary">${trades.length} trades</span>
+                </td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">${groupTotalSize.toFixed(0)}</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer; color: ${groupPnLColor}; font-size: 11px;">${groupPnLDisplay}</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td style="text-align: center; padding: 4px;">
+                    <span class="group-summary">${trades.length} trades</span>
+                </td>
+            `;
+            
+            tbody.appendChild(groupHeaderRow);
+            
+            // Add individual trades as group members
+            trades.forEach(trade => {
+                displaySingleTrade(tbody, trade, true, groupId);
+            });
+        }
+        
+        function displaySingleTrade(tbody, trade, isGroupMember = false, groupId = null) {
+            const row = document.createElement('tr');
+            
+            // Add group member class if this trade is part of a group
+            if (isGroupMember) {
+                row.className = 'trade-group-member';
+                row.setAttribute('data-group-id', groupId);
+            }
+            
+            // Display single total P&L for all trade types
+            let pnlDisplay, pnlColor;
+            
+            if (trade.type === 'efp' && (trade.storedPnLPrimary !== undefined || trade.storedPnLSecondary !== undefined)) {
+                // EFP: Calculate total P&L from swap + futures
+                const primaryPnL = trade.storedPnLPrimary !== undefined ? trade.storedPnLPrimary : 0;
+                const secondaryPnL = trade.storedPnLSecondary !== undefined ? trade.storedPnLSecondary : 0;
+                const totalPnL = primaryPnL + secondaryPnL;
+                
+                console.log(`💰 EFP Display - Primary: ${primaryPnL}, Secondary: ${secondaryPnL}, Total: ${totalPnL}`);
+                
+                // Format as currency
+                pnlDisplay = `$${totalPnL.toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                })}`;
+                
+                // Determine color based on total P&L
+                if (totalPnL > 0) {
+                    pnlColor = '#51cf66'; // Green for profit
+                } else if (totalPnL < 0) {
+                    pnlColor = '#ff6b6b'; // Red for loss
                 } else {
-                    // Non-EFP or single P&L
-                    pnlDisplay = trade.storedPnL || '--';
-                    pnlColor = '#00d4ff'; // Default aqua color
-                    
-                    if (pnlDisplay !== '--' && pnlDisplay !== 'No curves') {
-                        // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
-                        const pnlValue = parseFloat(pnlDisplay.replace(/[$,]/g, ''));
-                        if (!isNaN(pnlValue)) {
-                            if (pnlValue > 0) {
-                                pnlColor = '#51cf66'; // Green for profit
-                            } else if (pnlValue < 0) {
-                                pnlColor = '#ff6b6b'; // Red for loss
-                            }
+                    pnlColor = '#00d4ff'; // Aqua for zero
+                }
+            } else {
+                // Non-EFP or single P&L
+                pnlDisplay = trade.storedPnL || '--';
+                pnlColor = '#00d4ff'; // Default aqua color
+                
+                if (pnlDisplay !== '--' && pnlDisplay !== 'No curves') {
+                    // Extract numeric value from P&L display (e.g., "$1,234" -> 1234)
+                    const pnlValue = parseFloat(pnlDisplay.replace(/[$,]/g, ''));
+                    if (!isNaN(pnlValue)) {
+                        if (pnlValue > 0) {
+                            pnlColor = '#51cf66'; // Green for profit
+                        } else if (pnlValue < 0) {
+                            pnlColor = '#ff6b6b'; // Red for loss
                         }
                     }
                 }
-                
-                row.innerHTML = `
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.type}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.identifier}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.instrument}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.avgEntry.toFixed(2)}%</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor}; font-size: 11px;" class="pnl-cell">${pnlDisplay}</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                    <td style="text-align: center; padding: 4px;">
-                        <button class="btn-remove" onclick="removeTrade('${trade.id}')" style="position: static;">remove</button>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
+            }
+            
+            row.innerHTML = `
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.type}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.identifier}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.instrument}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.avgEntry.toFixed(2)}%</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor}; font-size: 11px;" class="pnl-cell">${pnlDisplay}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td style="text-align: center; padding: 4px;">
+                    <button class="btn-remove" onclick="removeTrade('${trade.id}')" style="position: static;">remove</button>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        }
+        
+        function toggleTradeGroup(groupId) {
+            console.log('🔄 Toggling trade group:', groupId);
+            
+            const arrow = document.getElementById(`group-arrow-${groupId}`);
+            const groupMembers = document.querySelectorAll(`[data-group-id="${groupId}"]`);
+            
+            if (!arrow || groupMembers.length === 0) {
+                console.log('❌ Group elements not found');
+                return;
+            }
+            
+            const isCollapsed = arrow.classList.contains('collapsed');
+            
+            if (isCollapsed) {
+                // Expand group
+                console.log('📖 Expanding group:', groupId);
+                arrow.classList.remove('collapsed');
+                arrow.textContent = '▼';
+                groupMembers.forEach(member => {
+                    member.classList.remove('hidden');
+                });
+            } else {
+                // Collapse group
+                console.log('📕 Collapsing group:', groupId);
+                arrow.classList.add('collapsed');
+                arrow.textContent = '▶';
+                groupMembers.forEach(member => {
+                    member.classList.add('hidden');
+                });
+            }
         }
         
         // Function to remove a trade
@@ -2995,6 +3212,8 @@
             const sizes = trade.sizes || [];
             const prices_secondary = trade.prices_secondary || [];
             const sizes_secondary = trade.sizes_secondary || [];
+            const primaryInsertionDates = trade.primary_pos_insertion_dt || [];
+            const secondaryInsertionDates = trade.secondary_pos_insertion_dt || [];
             
             console.log('📋 JSON Data extracted:', { 
                 trade_id: trade.trade_id,
@@ -3004,8 +3223,38 @@
                 sizes, 
                 prices_secondary, 
                 sizes_secondary,
-                instrument_details_secondary: trade.instrument_details_secondary
+                instrument_details_secondary: trade.instrument_details_secondary,
+                primaryInsertionDates,
+                secondaryInsertionDates
             });
+            
+            // 📅 ENHANCED INSERTION DATE DEBUGGING
+            console.log('📅 ================= INSERTION DATES DETAILED BREAKDOWN =================');
+            console.log('📅 Primary positions count:', prices.length);
+            console.log('📅 Primary insertion dates count:', primaryInsertionDates.length);
+            console.log('📅 Primary insertion dates array:', JSON.stringify(primaryInsertionDates));
+            
+            if (prices_secondary.length > 0 || secondaryInsertionDates.length > 0) {
+                console.log('📅 Secondary positions count:', prices_secondary.length);
+                console.log('📅 Secondary insertion dates count:', secondaryInsertionDates.length);
+                console.log('📅 Secondary insertion dates array:', JSON.stringify(secondaryInsertionDates));
+            }
+            
+            // Position-by-position breakdown
+            for (let i = 0; i < Math.max(prices.length, primaryInsertionDates.length); i++) {
+                const price = i < prices.length ? prices[i] : 'N/A';
+                const size = i < sizes.length ? sizes[i] : 'N/A';
+                const date = i < primaryInsertionDates.length ? primaryInsertionDates[i] : 'NO DATE';
+                console.log(`📅 PRIMARY Position ${i + 1}: Price=${price}, Size=${size}, Date="${date}"`);
+            }
+            
+            for (let i = 0; i < Math.max(prices_secondary.length, secondaryInsertionDates.length); i++) {
+                const price = i < prices_secondary.length ? prices_secondary[i] : 'N/A';
+                const size = i < sizes_secondary.length ? sizes_secondary[i] : 'N/A';
+                const date = i < secondaryInsertionDates.length ? secondaryInsertionDates[i] : 'NO DATE';
+                console.log(`📅 SECONDARY Position ${i + 1}: Price=${price}, Size=${size}, Date="${date}"`);
+            }
+            console.log('📅 ====================================================================');
             
             // Step 3: Wait for clearModalForm's setTimeout to finish, then populate everything
             setTimeout(() => {
@@ -3068,17 +3317,17 @@
                         console.log(`📊 EFP trade: Loading ${prices.length} primary and ${prices_secondary.length} secondary positions`);
                         
                         // Load primary (swap) positions
-                        loadPositionsFromJSON(prices, sizes, 'primary', 0);
+                        loadPositionsFromJSON(prices, sizes, primaryInsertionDates, 'primary', 0);
                         
                         // Load secondary (futures) positions with delay
                         const delay = 300 + (prices.length * 60);
                         setTimeout(() => {
-                            loadPositionsFromJSON(prices_secondary, sizes_secondary, 'secondary', 0);
+                            loadPositionsFromJSON(prices_secondary, sizes_secondary, secondaryInsertionDates, 'secondary', 0);
                         }, delay);
                         
                     } else {
                         console.log(`📊 Non-EFP trade: Loading ${prices.length} positions`);
-                        loadPositionsFromJSON(prices, sizes, 'primary', 0);
+                        loadPositionsFromJSON(prices, sizes, primaryInsertionDates, 'primary', 0);
                     }
                     
                     // Set up listeners and trigger updates after positions are loaded
@@ -3097,8 +3346,33 @@
         }
         
         // New function to add existing position with actual values (not zeros)
-        function add_position_existing(tableType, price, size, tradeType, instrument) {
-            console.log(`📥 Loading existing ${tableType} position: price=${price}, size=${JSON.stringify(size)}`);
+        function add_position_existing(tableType, price, size, insertionDate, tradeType, instrument) {
+            console.log(`📥 Loading existing ${tableType} position: price=${price}, size=${JSON.stringify(size)}, date=${insertionDate}`);
+            
+            // CRITICAL FIX: Ensure insertion date is properly formatted for date input
+            let formattedInsertionDate = '';
+            if (insertionDate && insertionDate !== null && insertionDate !== 'null') {
+                // Ensure date is in YYYY-MM-DD format for HTML date input
+                if (insertionDate.includes('/')) {
+                    // Convert from MM/DD/YYYY or DD/MM/YYYY to YYYY-MM-DD
+                    const parts = insertionDate.split('/');
+                    if (parts.length === 3) {
+                        // Assume MM/DD/YYYY format for now
+                        formattedInsertionDate = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                    }
+                } else if (insertionDate.includes('-') && insertionDate.length === 10) {
+                    // Already in YYYY-MM-DD format
+                    formattedInsertionDate = insertionDate;
+                } else {
+                    // Try to parse and format
+                    const date = new Date(insertionDate);
+                    if (!isNaN(date.getTime())) {
+                        formattedInsertionDate = date.toISOString().split('T')[0];
+                    }
+                }
+            }
+            
+            console.log(`📅 INSERTION DATE FORMATTING: "${insertionDate}" -> "${formattedInsertionDate}"`);
             
             // Determine which table to add to
             const tbody = tableType === 'secondary' 
@@ -3158,6 +3432,10 @@
                            onchange="handlePositionChange(this)" step="0.01">
                 </td>
                 ${sizeCell}
+                <td>
+                    <input type="date" data-position-insertion-date="${positionId}" value="${formattedInsertionDate}"
+                           onchange="handlePositionChange(this)" style="width: 100px; font-size: 11px;">
+                </td>
                 <td style="position: relative;">
                     <span class="pnl-display" style="color: #cccccc; padding: 4px 8px; display: inline-block; min-width: 60px; text-align: center;">--</span>
                     <button class="btn-remove" onclick="removePosition(this)" style="position: absolute; right: -60px; top: 50%; transform: translateY(-50%);">remove</button>
@@ -3165,19 +3443,30 @@
             `;
             
             tbody.appendChild(row);
-            console.log(`✅ Added existing ${tableType} position with actual values`);
+            console.log(`✅ Added existing ${tableType} position with actual values and formatted insertion date: ${formattedInsertionDate}`);
         }
         
-        function loadPositionsFromJSON(prices, sizes, tableType, index) {
+        function loadPositionsFromJSON(prices, sizes, insertionDates, tableType, index) {
             if (index >= prices.length || sizes[index] === undefined) {
                 console.log(`✅ Finished loading ${tableType} positions`);
+                console.log(`📅 FINAL ${tableType.toUpperCase()} INSERTION DATES SUMMARY:`);
+                console.log(`   Total positions loaded: ${index}`);
+                console.log(`   Insertion dates array: ${JSON.stringify(insertionDates)}`);
+                console.log(`   Dates per position: ${insertionDates ? insertionDates.map((date, i) => `Pos${i+1}=${date||'null'}`).join(', ') : 'no dates'}`);
                 return;
             }
             
             const price = prices[index];
             const sizeValue = sizes[index];
+            const insertionDate = insertionDates && insertionDates[index] ? insertionDates[index] : null;
             
-            console.log(`➕ Loading existing ${tableType} position ${index + 1}: price=${price}, size=${JSON.stringify(sizeValue)}`);
+            console.log(`➕ Loading existing ${tableType} position ${index + 1}:`);
+            console.log(`   📊 Price: ${price}`);
+            console.log(`   📊 Size: ${JSON.stringify(sizeValue)}`);
+            console.log(`   📅 Insertion Date from JSON: "${insertionDate}"`);
+            console.log(`   📅 Insertion Date null check: ${insertionDate === null ? 'IS NULL' : 'HAS VALUE'}`);
+            console.log(`   📅 Insertion Date array length: ${insertionDates ? insertionDates.length : 'no array'}`);
+            console.log(`   📅 Insertion Date at index ${index}: ${insertionDates && insertionDates[index] !== undefined ? `"${insertionDates[index]}"` : 'undefined'}`);
             
             // Determine trade type and instrument for this position
             let tradeType, instrument;
@@ -3199,11 +3488,11 @@
             }
             
             // Use the new add_position_existing function to directly add position with actual values
-            add_position_existing(tableType, price, sizeValue, tradeType, instrument);
+            add_position_existing(tableType, price, sizeValue, insertionDate, tradeType, instrument);
             
             // Load next position after a short delay
             setTimeout(() => {
-                loadPositionsFromJSON(prices, sizes, tableType, index + 1);
+                loadPositionsFromJSON(prices, sizes, insertionDates, tableType, index + 1);
             }, 50);
         }
         
@@ -3288,6 +3577,50 @@
                 console.log('📊 Backend data:', data);
                 console.log('📂 COMPLETE PORTFOLIO OBJECT:', JSON.stringify(data, null, 2));
                 
+                // 📅 INSERTION DATES BREAKDOWN - Enhanced logging for insertion dates
+                if (data.success && data.trades) {
+                    console.log('📅 ================= INSERTION DATES BREAKDOWN =================');
+                    Object.values(data.trades).forEach(trade => {
+                        console.log(`📅 Trade: ${trade.trade_id}`);
+                        console.log(`   Primary insertion dates: ${JSON.stringify(trade.primary_pos_insertion_dt || [])}`);
+                        console.log(`   Secondary insertion dates: ${JSON.stringify(trade.secondary_pos_insertion_dt || [])}`);
+                        
+                        // Show position count vs insertion date count
+                        const primaryPositions = (trade.prices || []).length;
+                        const secondaryPositions = (trade.prices_secondary || []).length;
+                        const primaryDates = (trade.primary_pos_insertion_dt || []).length;
+                        const secondaryDates = (trade.secondary_pos_insertion_dt || []).length;
+                        
+                        console.log(`   Primary: ${primaryPositions} positions, ${primaryDates} dates`);
+                        if (secondaryPositions > 0 || secondaryDates > 0) {
+                            console.log(`   Secondary: ${secondaryPositions} positions, ${secondaryDates} dates`);
+                        }
+                        
+                        // Detailed breakdown with position-date mapping
+                        if (primaryPositions > 0 || primaryDates > 0) {
+                            console.log(`   📊 Primary position details:`);
+                            for (let i = 0; i < Math.max(primaryPositions, primaryDates); i++) {
+                                const price = trade.prices && trade.prices[i] ? trade.prices[i] : 'N/A';
+                                const size = trade.sizes && trade.sizes[i] ? trade.sizes[i] : 'N/A';
+                                const date = trade.primary_pos_insertion_dt && trade.primary_pos_insertion_dt[i] ? trade.primary_pos_insertion_dt[i] : 'No date';
+                                console.log(`     Position ${i + 1}: Price=${price}, Size=${size}, Date=${date}`);
+                            }
+                        }
+                        
+                        if (secondaryPositions > 0 || secondaryDates > 0) {
+                            console.log(`   📊 Secondary position details:`);
+                            for (let i = 0; i < Math.max(secondaryPositions, secondaryDates); i++) {
+                                const price = trade.prices_secondary && trade.prices_secondary[i] ? trade.prices_secondary[i] : 'N/A';
+                                const size = trade.sizes_secondary && trade.sizes_secondary[i] ? trade.sizes_secondary[i] : 'N/A';
+                                const date = trade.secondary_pos_insertion_dt && trade.secondary_pos_insertion_dt[i] ? trade.secondary_pos_insertion_dt[i] : 'No date';
+                                console.log(`     Position ${i + 1}: Price=${price}, Size=${size}, Date=${date}`);
+                            }
+                        }
+                        console.log(''); // Empty line between trades
+                    });
+                    console.log('📅 ========================================================');
+                }
+                
                 if (data.success) {
                     // Clear local storage
                     storedTrades = [];
@@ -3344,7 +3677,8 @@
                             positions: [],
                             avgEntry: backendTrade.weighted_avg_entry || 0,
                             totalSize: totalEntrySize,
-                            storedPnL: storedPnLDisplay
+                            storedPnL: storedPnLDisplay,
+                            groupId: backendTrade.group_id || null
                         };
                         
                 // For EFP trades, also extract separate P&L values
@@ -3754,9 +4088,11 @@
                 });
             }
             
-            // Get price and size values
+            // Get price, size, and insertion date values
             const price = parseFloat(priceInput.value);
             const sizeInputs = row.querySelectorAll('[data-position-size]');
+            const insertionDateInput = row.querySelector('[data-position-insertion-date]');
+            const insertionDate = insertionDateInput ? insertionDateInput.value : null;
             
             console.log('🔍 Size inputs found:', {
                 count: sizeInputs.length,
@@ -3765,6 +4101,11 @@
                     value: input.value,
                     dataset: input.dataset
                 }))
+            });
+            
+            console.log('🔍 Insertion date input found:', {
+                insertionDateInput: !!insertionDateInput,
+                insertionDate: insertionDate
             });
             
             // Collect size value(s) - can be single or array for futures
@@ -3790,7 +4131,9 @@
                 priceIsValid: !isNaN(price),
                 size: size,
                 sizeIsValid: sizeIsValid,
+                insertionDate: insertionDate, 
                 canProceed: !isNaN(price) && sizeIsValid
+
             });
             
             if (!isNaN(price) && sizeIsValid) {
@@ -3804,7 +4147,8 @@
                     position_index: positionIndex,
                     positionType: tableType,
                     price: price,
-                    size: size
+                    size: size,
+                    insertion_date: insertionDate
                 };
                 
                 console.log('📤 EDIT POSITION REQUEST:', editPayload);

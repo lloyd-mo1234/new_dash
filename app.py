@@ -1004,6 +1004,15 @@ def add_trade():
         entry_prices_secondary = data.get('entry_prices_secondary', [])
         entry_sizes_secondary = data.get('entry_sizes_secondary', [])
         
+        # CRITICAL FIX: Get insertion date arrays from request
+        entry_insertion_dates = data.get('entry_insertion_dates', [])
+        entry_insertion_dates_secondary = data.get('entry_insertion_dates_secondary', [])
+        
+        # 🐛 DEBUG: Log insertion dates received from modal
+        print(f'🐛 DEBUG [add_trade] - Insertion dates received from modal:')
+        print(f'   - entry_insertion_dates: {entry_insertion_dates}')
+        print(f'   - entry_insertion_dates_secondary: {entry_insertion_dates_secondary}')
+        
         # For EFP trades, use separate arrays if provided
         is_efp = primary_typology == 'efp' and secondary_typology
         
@@ -1028,6 +1037,15 @@ def add_trade():
                         trade.sizes_secondary.append(size)
                     else:
                         trade.sizes_secondary.append(float(size))
+            
+            # CRITICAL FIX: Set insertion date arrays for EFP trades
+            trade.primary_pos_insertion_dt = entry_insertion_dates if entry_insertion_dates else []
+            trade.secondary_pos_insertion_dt = entry_insertion_dates_secondary if entry_insertion_dates_secondary else []
+            
+            # 🐛 DEBUG: Log insertion dates stored in trade object (EFP)
+            print(f'🐛 DEBUG [add_trade EFP] - Insertion dates stored in trade object:')
+            print(f'   - trade.primary_pos_insertion_dt: {trade.primary_pos_insertion_dt}')
+            print(f'   - trade.secondary_pos_insertion_dt: {trade.secondary_pos_insertion_dt}')
         else:
             # Non-EFP trade - store all in primary arrays
             for price, size in zip(entry_prices, entry_sizes):
@@ -1037,6 +1055,13 @@ def add_trade():
                         trade.sizes.append(size)
                     else:
                         trade.sizes.append(float(size))
+            
+            # CRITICAL FIX: Set primary insertion date array for non-EFP trades
+            trade.primary_pos_insertion_dt = entry_insertion_dates if entry_insertion_dates else []
+            
+            # 🐛 DEBUG: Log insertion dates stored in trade object (non-EFP)
+            print(f'🐛 DEBUG [add_trade non-EFP] - Insertion dates stored in trade object:')
+            print(f'   - trade.primary_pos_insertion_dt: {trade.primary_pos_insertion_dt}')
         
         # Calculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1102,6 +1127,15 @@ def get_trades():
                 'weighted_avg_price': trade.get_weighted_average_price(),
                 'stored_pnl': stored_pnl,
                 'pnl_timestamp': pnl_timestamp,
+                # CRITICAL FIX: Include secondary data for EFP trades in backup
+                'prices_secondary': getattr(trade, 'prices_secondary', []),
+                'sizes_secondary': getattr(trade, 'sizes_secondary', []),
+                'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', []),
+                'stored_pnl_primary': getattr(trade, 'stored_pnl_primary', None),
+                'stored_pnl_secondary': getattr(trade, 'stored_pnl_secondary', None),
+                # CRITICAL FIX: Include insertion date arrays in backup
+                'primary_pos_insertion_dt': getattr(trade, 'primary_pos_insertion_dt', []),
+                'secondary_pos_insertion_dt': getattr(trade, 'secondary_pos_insertion_dt', [])
             }
         
         # Include portfolio-level P&L metadata
@@ -1202,6 +1236,15 @@ def update_trade():
         entry_prices_secondary = data.get('entry_prices_secondary', [])
         entry_sizes_secondary = data.get('entry_sizes_secondary', [])
         
+        # CRITICAL FIX: Get insertion date arrays from request
+        entry_insertion_dates = data.get('entry_insertion_dates', [])
+        entry_insertion_dates_secondary = data.get('entry_insertion_dates_secondary', [])
+        
+        # 🐛 DEBUG: Log insertion dates received from modal (update_trade)
+        print(f'🐛 DEBUG [update_trade] - Insertion dates received from frontend:')
+        print(f'   - entry_insertion_dates: {entry_insertion_dates}')
+        print(f'   - entry_insertion_dates_secondary: {entry_insertion_dates_secondary}')
+        
         # Check if this is an EFP trade that needs separate position handling
         is_efp = trade.typology == 'efp' and trade.secondary_typology
         
@@ -1214,6 +1257,10 @@ def update_trade():
             trade.sizes = []
             trade.prices_secondary = []
             trade.sizes_secondary = []
+            
+            # CRITICAL FIX: Clear insertion date arrays
+            trade.primary_pos_insertion_dt = []
+            trade.secondary_pos_insertion_dt = []
             
             # Primary positions (swap leg)
             for price, size in zip(entry_prices, entry_sizes):
@@ -1232,6 +1279,12 @@ def update_trade():
                         trade.sizes_secondary.append(size)
                     else:
                         trade.sizes_secondary.append(float(size))
+            
+            # CRITICAL FIX: Update insertion date arrays
+            if entry_insertion_dates:
+                trade.primary_pos_insertion_dt = entry_insertion_dates
+            if entry_insertion_dates_secondary:
+                trade.secondary_pos_insertion_dt = entry_insertion_dates_secondary
         else:
             # Non-EFP trade - store all in primary arrays
             trade.prices = [float(p) for p in entry_prices if p]
@@ -1242,6 +1295,13 @@ def update_trade():
                         trade.sizes.append(s)
                     else:
                         trade.sizes.append(float(s))
+            
+            # CRITICAL FIX: Update primary insertion date array for non-EFP trades
+            if entry_insertion_dates:
+                trade.primary_pos_insertion_dt = entry_insertion_dates
+            else:
+                # Ensure the array exists but is empty if no dates provided
+                trade.primary_pos_insertion_dt = []
         
         # Recalculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1415,6 +1475,7 @@ def add_position():
         instrument = data.get('instrument')
         price_raw = data.get('price')
         size_raw = data.get('size')
+        insertion_date = data.get('insertion_date')  # NEW: Get insertion date from request
         
         if not trade_id or trade_id not in portfolio.trades:
             return jsonify({'error': 'Valid trade_id is required'}), 400
@@ -1465,7 +1526,8 @@ def add_position():
                 handle=position_handle,
                 price=price,
                 size=size,
-                instrument=instrument
+                instrument=instrument,
+                insertion_date=insertion_date  # NEW: Pass insertion date to position
             )
             
             # Build the futures expression
@@ -1479,9 +1541,17 @@ def add_position():
             if trade_type == 'efp' and position_type == 'secondary':
                 trade.prices_secondary.append(price)
                 trade.sizes_secondary.append(size)
+                # NEW: Add insertion date to secondary array
+                if not hasattr(trade, 'secondary_pos_insertion_dt'):
+                    trade.secondary_pos_insertion_dt = []
+                trade.secondary_pos_insertion_dt.append(insertion_date)
             else:
                 trade.prices.append(price)
                 trade.sizes.append(size)
+                # NEW: Add insertion date to primary array
+                if not hasattr(trade, 'primary_pos_insertion_dt'):
+                    trade.primary_pos_insertion_dt = []
+                trade.primary_pos_insertion_dt.append(insertion_date)
             
             return jsonify({
                 'success': True,
@@ -1496,7 +1566,8 @@ def add_position():
                 handle=position_handle,
                 price=price,
                 size=size,
-                instrument=instrument
+                instrument=instrument,
+                insertion_date=insertion_date  # NEW: Pass insertion date to position
             )
             
             # Create XC swaps
@@ -1509,6 +1580,10 @@ def add_position():
             # Update trade arrays to keep in sync
             trade.prices.append(price)
             trade.sizes.append(size)
+            # NEW: Add insertion date to primary array
+            if not hasattr(trade, 'primary_pos_insertion_dt'):
+                trade.primary_pos_insertion_dt = []
+            trade.primary_pos_insertion_dt.append(insertion_date)
             
             return jsonify({
                 'success': True,
@@ -1529,6 +1604,11 @@ def edit_position():
         data = request.get_json()
         print('📥 Request data received:', data)
         
+        # 🐛 EXPLICIT DEBUG: Log the exact insertion_date parameter
+        insertion_date_from_request = data.get('insertion_date')
+        print(f'🐛 DEBUG [edit_position] - EXPLICIT insertion_date parameter: {insertion_date_from_request}')
+        print(f'🐛 DEBUG [edit_position] - insertion_date type: {type(insertion_date_from_request)}')
+        
         if not data:
             print('❌ No JSON data received')
             return jsonify({'error': 'No JSON data received'}), 400
@@ -1539,13 +1619,18 @@ def edit_position():
         position_type = data.get('positionType', 'primary')  # 'primary' or 'secondary'
         new_price = data.get('price')
         new_size = data.get('size')
+        new_insertion_date = data.get('insertion_date')  # NEW: Get insertion date from request
+        
+        # 🐛 DEBUG: Log insertion date received from frontend
+        print(f'🐛 DEBUG [edit_position] - Insertion date received from frontend: {new_insertion_date}')
         
         print('📋 Extracted parameters:', {
             'trade_id': trade_id,
             'position_index': position_index,
             'position_type': position_type,
             'new_price': new_price,
-            'new_size': new_size
+            'new_size': new_size,
+            'new_insertion_date': new_insertion_date
         })
         
         if not trade_id or trade_id not in portfolio.trades:
@@ -1625,6 +1710,38 @@ def edit_position():
             else:
                 position.size = float(new_size)
                 print(f'📝 Updated position {position_index} size (single): {old_size} -> {position.size}')
+        
+        # NEW: Update insertion date if provided
+        if new_insertion_date is not None:
+            old_insertion_date = getattr(position, 'insertion_date', None)
+            position.insertion_date = new_insertion_date
+            print(f'📝 Updated position {position_index} insertion date: {old_insertion_date} -> {position.insertion_date}')
+            
+            # Also update the trade's insertion date arrays (ensure arrays exist and are long enough)
+            if position_type == 'secondary':
+                # Ensure secondary insertion date array exists
+                if not hasattr(trade, 'secondary_pos_insertion_dt'):
+                    trade.secondary_pos_insertion_dt = []
+                
+                # Extend array if needed to accommodate the position index
+                while len(trade.secondary_pos_insertion_dt) <= position_index:
+                    trade.secondary_pos_insertion_dt.append(None)
+                
+                # Update the insertion date
+                trade.secondary_pos_insertion_dt[position_index] = new_insertion_date
+                print(f'📝 Updated trade secondary insertion date array at index {position_index}: {new_insertion_date}')
+            else:
+                # Ensure primary insertion date array exists
+                if not hasattr(trade, 'primary_pos_insertion_dt'):
+                    trade.primary_pos_insertion_dt = []
+                
+                # Extend array if needed to accommodate the position index
+                while len(trade.primary_pos_insertion_dt) <= position_index:
+                    trade.primary_pos_insertion_dt.append(None)
+                
+                # Update the insertion date
+                trade.primary_pos_insertion_dt[position_index] = new_insertion_date
+                print(f'📝 Updated trade primary insertion date array at index {position_index}: {new_insertion_date}')
         
         # Recreate XC structures with new values
         if isinstance(position, XCSwapPosition):
@@ -1905,6 +2022,10 @@ def restore_portfolio():
             
             # CRITICAL FIX: Restore group_id field
             trade.group_id = trade_data.get('group_id')
+            
+            # CRITICAL FIX: Restore insertion date arrays
+            trade.primary_pos_insertion_dt = trade_data.get('primary_pos_insertion_dt', [])
+            trade.secondary_pos_insertion_dt = trade_data.get('secondary_pos_insertion_dt', [])
             
             # Add to portfolio
             portfolio.trades[trade_id] = trade
