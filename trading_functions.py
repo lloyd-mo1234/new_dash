@@ -168,7 +168,15 @@ class XCSwapPosition:
             return False
     
     def calculate_pnl(self, curve_handle: str = None):
-        """Calculate P&L using xc.PresentValue for all component swaps"""
+        """
+        Calculate single-date P&L using xc.PresentValue for all component swaps
+        
+        Args:
+            curve_handle: Specific curve bundle handle to use (optional, defaults to today's curve)
+        
+        Returns:
+            dict with single PnL value
+        """
         print(f"🔍 calculate_pnl called for position: {self.handle}")
         print(f"   self.xc_created = {self.xc_created}")
         print(f"   len(self.xc_swaps) = {len(self.xc_swaps)}")
@@ -229,6 +237,109 @@ class XCSwapPosition:
             error_msg = f"xc.PresentValue error for {self.handle}: {str(e)}"
             print(f"❌ {error_msg}")
             return {'pnl': 0.0, 'error': error_msg}
+    
+    def calculate_array_pnl(self):
+        """
+        Calculate PnL array over multiple dates from insertion date to today
+        
+        Uses self.insertion_date as start date and today as end date
+        
+        Returns:
+            dict with pnl_array: list of (date, pnl) tuples
+        """
+        if not self.xc_created or not self.xc_swaps:
+            error_msg = f"XC swaps for {self.handle} not created, cannot calculate P&L"
+            print(f"⚠️ {error_msg}")
+            return {'pnl_array': [], 'error': error_msg}
+        
+        try:
+            from loader import get_available_dates, yymmdd_to_datetime
+            
+            # Convert insertion_date (YYYY-MM-DD) to YYMMDD format for filtering
+            if self.insertion_date:
+                start_dt_converted = datetime.strptime(self.insertion_date, '%Y-%m-%d')
+                start_date = start_dt_converted.strftime('%y%m%d')
+            else:
+                # Default to 30 days ago if no insertion date
+                start_dt_converted = datetime.now() - timedelta(days=30)
+                start_date = start_dt_converted.strftime('%y%m%d')
+            
+            # End date is today
+            end_dt_converted = datetime.now()
+            end_date = end_dt_converted.strftime('%y%m%d')
+            
+            print(f"📊 Calculating PnL array from {start_date} to {end_date}")
+            print(f"   Insertion date: {self.insertion_date}")
+            
+            # Get all available dates from loader
+            all_dates = get_available_dates()
+            
+            # Filter dates that fall within our range (inclusive)
+            start_dt = yymmdd_to_datetime(start_date)
+            end_dt = yymmdd_to_datetime(end_date)
+            
+            filtered_dates = []
+            for date_str in all_dates:
+                date_dt = yymmdd_to_datetime(date_str)
+                if start_dt <= date_dt <= end_dt:
+                    filtered_dates.append(date_str)
+            
+            print(f"📅 Found {len(filtered_dates)} dates in range")
+            
+            if not filtered_dates:
+                return {
+                    'pnl_array': [],
+                    'error': f'No curve dates available between {start_date} and {end_date}'
+                }
+            
+            # Calculate PnL for each date
+            pnl_array = []
+            
+            for date_str in sorted(filtered_dates):
+                # Get bundle name for this date
+                from loader import get_bundle_name
+                bundle_name = get_bundle_name(date_str)
+                
+                if not bundle_name:
+                    print(f"⚠️ No bundle found for date {date_str}")
+                    continue
+                
+                # Calculate total PnL for this date
+                total_pnl = 0.0
+                
+                for swap_info in self.xc_swaps:
+                    swap_handle = swap_info['handle']
+                    
+                    try:
+                        pnl = xc.PresentValue(bundle_name, swap_handle)
+                        pnl_value = float(pnl)
+                        total_pnl += pnl_value
+                    except Exception as e:
+                        print(f"⚠️ Error calculating PnL for {swap_handle} on {date_str}: {e}")
+                        continue
+                
+                # Convert date to datetime for output
+                date_dt = yymmdd_to_datetime(date_str)
+                pnl_array.append((date_dt, total_pnl))
+                print(f"   {date_dt.strftime('%Y-%m-%d')}: ${total_pnl:,.2f}")
+            
+            print(f"✅ Calculated PnL for {len(pnl_array)} dates")
+            
+            return {
+                'pnl_array': pnl_array,
+                'error': None,
+                'start_date': start_date,
+                'end_date': end_date,
+                'num_dates': len(pnl_array)
+            }
+            
+        except Exception as e:
+            error_msg = f"Error calculating PnL array: {str(e)}"
+            print(f"❌ {error_msg}")
+            return {
+                'pnl_array': [],
+                'error': error_msg
+            }
 
 class XCFuturesPosition:
     """Represents a futures position for P&L calculation"""
@@ -304,7 +415,15 @@ class XCFuturesPosition:
             return False
         
     def calculate_pnl(self, futures_tick_data: pd.DataFrame = None) -> Dict[str, Any]:
-        """Calculate P&L for futures position using tick data - handles both single instruments and expressions"""
+        """
+        Calculate single-date P&L for futures position using tick data
+        
+        Args:
+            futures_tick_data: DataFrame with futures contract details (tick size, tick value, current px_mid)
+        
+        Returns:
+            dict with single PnL value
+        """
         try:
             print(f"🔍 Calculating futures P&L for {self.handle}")
             print(f"   Instrument: {self.instrument}")
@@ -420,6 +539,146 @@ class XCFuturesPosition:
             error_msg = f"Error calculating futures P&L for {self.handle}: {str(e)}"
             print(f"❌ {error_msg}")
             return {'pnl': 0.0, 'error': error_msg}
+    
+    def calculate_array_pnl(self, futures_tick_data: pd.DataFrame, historical_prices: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculate PnL array over multiple dates from insertion date to today
+        
+        Uses self.insertion_date as start date and today as end date
+        
+        Args:
+            futures_tick_data: DataFrame with futures contract details (tick size, tick value)
+            historical_prices: DataFrame with historical prices (rows=dates, columns=instrument names)
+        
+        Returns:
+            dict with pnl_array: list of (date, pnl) tuples
+        """
+        if not self.futures_built:
+            error_msg = f"Futures expression for {self.handle} not built, cannot calculate P&L"
+            print(f"⚠️ {error_msg}")
+            return {'pnl_array': [], 'error': error_msg}
+        
+        try:
+            # Convert insertion_date (YYYY-MM-DD) to datetime.date for filtering
+            if self.insertion_date:
+                start_date = datetime.strptime(self.insertion_date, '%Y-%m-%d').date()
+            else:
+                # Default to 30 days ago if no insertion date
+                start_date = (datetime.now() - timedelta(days=30)).date()
+            
+            # End date is today (as date, not datetime)
+            end_date = datetime.now().date()
+            
+            print(f"📊 Calculating futures PnL array from {start_date} to {end_date}")
+            print(f"   Insertion date: {self.insertion_date}")
+            
+            # Build the futures expression if not already built
+            if not self.futures_built:
+                if not self.build_futures_expression(futures_tick_data):
+                    error_msg = f"Failed to build futures expression for {self.instrument}"
+                    print(f"❌ {error_msg}")
+                    return {'pnl_array': [], 'error': error_msg}
+            
+            if futures_tick_data is None or futures_tick_data.empty:
+                error_msg = "No futures tick data provided for tick size/value information"
+                print(f"❌ {error_msg}")
+                return {'pnl_array': [], 'error': error_msg}
+            
+            if historical_prices is None or historical_prices.empty:
+                error_msg = "No historical prices DataFrame provided"
+                print(f"❌ {error_msg}")
+                return {'pnl_array': [], 'error': error_msg}
+            
+            # Filter dates that fall within our range (inclusive)
+            # historical_prices index should be datetime objects
+            mask = (historical_prices.index >= start_date) & (historical_prices.index <= end_date)
+            filtered_prices = historical_prices[mask]
+            
+            if filtered_prices.empty:
+                error_msg = f"No prices found between {start_date} and {end_date}"
+                print(f"❌ {error_msg}")
+                return {'pnl_array': [], 'error': error_msg}
+            
+            print(f"📅 Found {len(filtered_prices)} dates with price data")
+            
+            # Determine if we have individual component sizes
+            has_individual_sizes = isinstance(self.size, list) and len(self.size) == len(self.components)
+            
+            # Calculate PnL for each date
+            pnl_array = []
+            
+            for date_idx, date in enumerate(filtered_prices.index):
+                total_pnl = 0.0
+                
+                # Calculate PnL for each component
+                for idx, comp in enumerate(self.components):
+                    instrument = comp['instrument']
+                    coefficient = comp['coefficient']
+                    
+                    # Get the size for this component
+                    if has_individual_sizes:
+                        component_size = self.size[idx]
+                    else:
+                        component_size = self.size if isinstance(self.size, (int, float)) else 0
+                    
+                    # Check if instrument exists in tick data (for tick size/value)
+                    if instrument not in futures_tick_data.index:
+                        print(f"⚠️ Instrument {instrument} not found in tick data, skipping")
+                        continue
+                    
+                    # Check if instrument exists in historical prices
+                    if instrument not in filtered_prices.columns:
+                        print(f"⚠️ Instrument {instrument} not found in historical prices, skipping")
+                        continue
+                    
+                    # Get futures contract details (tick size/value from tick data)
+                    instrument_data = futures_tick_data.loc[instrument]
+                    fut_tick_size = instrument_data['fut_tick_size']
+                    fut_tick_val = instrument_data['fut_tick_val']
+                    
+                    # Get the market price for this date from historical_prices
+                    px_mid = filtered_prices.loc[date, instrument]
+                    
+                    # Skip if price is NaN
+                    if pd.isna(px_mid):
+                        print(f"⚠️ No price for {instrument} on {date}, skipping")
+                        continue
+                    
+                    # Get the entry price for this component
+                    component_price = self.component_rates.get(instrument, px_mid)
+                    
+                    # Calculate P&L: (entry_price - px_mid) / tick_size * tick_value * size * coefficient
+                    price_diff = component_price - px_mid
+                    tick_count = price_diff / fut_tick_size
+                    component_pnl = tick_count * fut_tick_val * component_size * coefficient
+                    
+                    total_pnl += component_pnl
+                
+                # Add this date's PnL to the array
+                pnl_array.append((date, total_pnl))
+                
+                if date_idx < 5 or date_idx >= len(filtered_prices) - 2:  # Log first 5 and last 2
+                    print(f"   {date.strftime('%Y-%m-%d')}: ${total_pnl:,.2f}")
+            
+            print(f"✅ Calculated PnL for {len(pnl_array)} dates")
+            
+            return {
+                'pnl_array': pnl_array,
+                'error': None,
+                'start_date': start_date,
+                'end_date': end_date,
+                'num_dates': len(pnl_array)
+            }
+            
+        except Exception as e:
+            error_msg = f"Error calculating futures PnL array: {str(e)}"
+            print(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'pnl_array': [],
+                'error': error_msg
+            }
 
 class Trade:
     """Object representing a single trade with XC swap positions"""
@@ -720,6 +979,168 @@ class Trade:
                 "primary_pnl": 0.0,
                 "secondary_pnl": 0.0,
                 "method": "no_positions"
+            }
+    
+    def calculate_array_pnl(self, futures_tick_data: pd.DataFrame = None, 
+                           historical_prices: pd.DataFrame = None) -> Dict[str, Any]:
+        """
+        Calculate PnL array over multiple dates by combining arrays from all positions
+        
+        Uses date INTERSECTION across all positions to ensure we only include dates
+        where all positions have P&L data.
+        
+        Args:
+            futures_tick_data: DataFrame with futures contract details (for futures positions)
+            historical_prices: DataFrame with historical futures prices (for futures positions)
+        
+        Returns:
+            dict with:
+            - pnl_array: List of (date, pnl) tuples
+            - error: Error message if any
+            - primary_pnl_array: List of (date, pnl) tuples for primary positions only
+            - secondary_pnl_array: List of (date, pnl) tuples for secondary positions only
+        """
+        try:
+            print(f"📊 Calculating array P&L for trade: {self.trade_id}")
+            
+            if not self.positions and not self.positions_secondary:
+                error_msg = f"No positions created for trade {self.trade_id}"
+                print(f"⚠️ {error_msg}")
+                return {
+                    'pnl_array': [],
+                    'primary_pnl_array': [],
+                    'secondary_pnl_array': [],
+                    'error': error_msg
+                }
+            
+            # Store all PnL arrays from each position as dictionaries: {date -> pnl}
+            primary_position_pnls = []  # List of {date -> pnl} dicts for primary positions
+            secondary_position_pnls = []  # List of {date -> pnl} dicts for secondary positions
+            
+            # Collect PnL arrays from primary positions (swaps or futures)
+            for position in self.positions:
+                if isinstance(position, XCSwapPosition):
+                    # Call swap position calculate_array_pnl (no params needed)
+                    result = position.calculate_array_pnl()
+                elif isinstance(position, XCFuturesPosition):
+                    # Call futures position calculate_array_pnl (needs tick data and historical prices)
+                    result = position.calculate_array_pnl(futures_tick_data, historical_prices)
+                else:
+                    print(f"⚠️ Unknown position type: {type(position)}")
+                    continue
+                
+                if result.get('error'):
+                    print(f"⚠️ Error in position {position.handle}: {result['error']}")
+                    continue
+                
+                # Convert array list to dictionary for easier intersection
+                pnl_dict = {date: pnl for date, pnl in result['pnl_array']}
+                primary_position_pnls.append(pnl_dict)
+                print(f"✅ Got {len(pnl_dict)} dates from primary position {position.handle}")
+            
+            # Collect PnL arrays from secondary positions (futures for EFP)
+            for position in self.positions_secondary:
+                if isinstance(position, XCFuturesPosition):
+                    # Call futures position calculate_array_pnl
+                    result = position.calculate_array_pnl(futures_tick_data, historical_prices)
+                elif isinstance(position, XCSwapPosition):
+                    # Call swap position calculate_array_pnl
+                    result = position.calculate_array_pnl()
+                else:
+                    print(f"⚠️ Unknown secondary position type: {type(position)}")
+                    continue
+                
+                if result.get('error'):
+                    print(f"⚠️ Error in secondary position {position.handle}: {result['error']}")
+                    continue
+                
+                # Convert array list to dictionary
+                pnl_dict = {date: pnl for date, pnl in result['pnl_array']}
+                secondary_position_pnls.append(pnl_dict)
+                print(f"✅ Got {len(pnl_dict)} dates from secondary position {position.handle}")
+            
+            # Find UNION of dates across ALL positions (primary and secondary)
+            all_position_pnls = primary_position_pnls + secondary_position_pnls
+            
+            if not all_position_pnls:
+                error_msg = f"No valid P&L arrays from any positions for trade {self.trade_id}"
+                print(f"⚠️ {error_msg}")
+                return {
+                    'pnl_array': [],
+                    'primary_pnl_array': [],
+                    'secondary_pnl_array': [],
+                    'error': error_msg
+                }
+            
+            # Start with empty set and take union of all dates
+            all_dates = set()
+            
+            # Union all dates from all positions
+            for pnl_dict in all_position_pnls:
+                all_dates = all_dates.union(set(pnl_dict.keys()))
+            
+            print(f"📅 Found {len(all_dates)} total dates across all positions (union)")
+            
+            if not all_dates:
+                error_msg = f"No dates found in any positions for trade {self.trade_id}"
+                print(f"⚠️ {error_msg}")
+                return {
+                    'pnl_array': [],
+                    'primary_pnl_array': [],
+                    'secondary_pnl_array': [],
+                    'error': error_msg
+                }
+            
+            # Sort dates
+            sorted_dates = sorted(list(all_dates))
+            
+            # Calculate combined P&L for each common date
+            pnl_array = []
+            primary_pnl_array = []
+            secondary_pnl_array = []
+            
+            for date in sorted_dates:
+                # Sum P&L from all primary positions for this date
+                primary_pnl = sum(pnl_dict[date] for pnl_dict in primary_position_pnls if date in pnl_dict)
+                
+                # Sum P&L from all secondary positions for this date
+                secondary_pnl = sum(pnl_dict[date] for pnl_dict in secondary_position_pnls if date in pnl_dict)
+                
+                # Total P&L is sum of primary and secondary
+                total_pnl = primary_pnl + secondary_pnl
+                
+                pnl_array.append((date, total_pnl))
+                primary_pnl_array.append((date, primary_pnl))
+                secondary_pnl_array.append((date, secondary_pnl))
+            
+            # Log first few and last few entries
+            print(f"📊 Combined P&L array for trade {self.trade_id}:")
+            for i, (date, pnl) in enumerate(pnl_array):
+                if i < 3 or i >= len(pnl_array) - 2:
+                    print(f"   {date.strftime('%Y-%m-%d')}: ${pnl:,.2f}")
+            
+            print(f"✅ Calculated array P&L for {len(pnl_array)} dates")
+            
+            return {
+                'pnl_array': pnl_array,
+                'primary_pnl_array': primary_pnl_array,
+                'secondary_pnl_array': secondary_pnl_array,
+                'error': None,
+                'num_dates': len(pnl_array),
+                'num_primary_positions': len(primary_position_pnls),
+                'num_secondary_positions': len(secondary_position_pnls)
+            }
+            
+        except Exception as e:
+            error_msg = f"Error calculating array P&L for trade {self.trade_id}: {str(e)}"
+            print(f"❌ {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'pnl_array': [],
+                'primary_pnl_array': [],
+                'secondary_pnl_array': [],
+                'error': error_msg
             }
 
 class Portfolio:
@@ -1756,6 +2177,75 @@ def get_futures_instrument_names(portfolio) -> List[str]:
     except Exception as e:
         print(f"❌ Error extracting futures instrument names: {e}")
         return []
+
+def get_futures_history(portfolio, start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    Get historical futures prices using Bloomberg BDH
+    
+    Args:
+        portfolio: Portfolio object containing trades
+        start_date: Start date in 'YYYYMMDD' or 'YYYY-MM-DD' format
+        end_date: End date in 'YYYYMMDD' or 'YYYY-MM-DD' format
+    
+    Returns:
+        DataFrame with:
+        - Index: datetime dates
+        - Columns: futures instrument names (as they appear in the expressions)
+        - Values: historical prices (px_last)
+    """
+    try:
+        print(f"📊 Getting futures historical data from {start_date} to {end_date}")
+        
+        # Get all futures instrument names from the portfolio
+        futures_instruments = get_futures_instrument_names(portfolio)
+        
+        if not futures_instruments:
+            print("⚠️ No futures instruments found in portfolio")
+            return pd.DataFrame()
+        
+        print(f"📊 Requesting historical data for {len(futures_instruments)} instruments:")
+        for instrument in futures_instruments:
+            print(f"   - {instrument}")
+        
+        # Use Bloomberg BDH to get historical data
+        # BDH returns DataFrame with MultiIndex columns (ticker, field)
+        print(f"🔄 Calling Bloomberg BDH...")
+        hist_df = blp.bdh(
+            tickers=futures_instruments,
+            flds=['px_last'],
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        if hist_df is None or hist_df.empty:
+            print("⚠️ No historical data returned from Bloomberg")
+            return pd.DataFrame()
+        
+        # BDH returns MultiIndex columns: (ticker, field)
+        # We need to flatten to just ticker names
+        if isinstance(hist_df.columns, pd.MultiIndex):
+            # Extract just the ticker level (level 0)
+            hist_df.columns = hist_df.columns.get_level_values(0)
+        
+        print(f"✅ Retrieved historical data:")
+        print(f"   Date range: {hist_df.index.min()} to {hist_df.index.max()}")
+        print(f"   Number of dates: {len(hist_df)}")
+        print(f"   Instruments: {list(hist_df.columns)}")
+        
+        # Display sample data (first 3 and last 3 rows)
+        print("\n📊 Sample data (first 3 rows):")
+        print(hist_df.head(3))
+        if len(hist_df) > 6:
+            print("\n📊 Sample data (last 3 rows):")
+            print(hist_df.tail(3))
+        
+        return hist_df
+        
+    except Exception as e:
+        print(f"❌ Error getting futures historical data: {e}")
+        import traceback
+        traceback.print_exc()
+        return pd.DataFrame()
 
 def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
     """

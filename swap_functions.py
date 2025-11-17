@@ -397,3 +397,4 @@ def get_status():
         'realtime_available': REALTIME_AVAILABLE,
         'supported_currencies': list(CURRENCY_CONFIG.keys())
     }
+
