@@ -2044,5 +2044,36 @@ def restore_portfolio():
         print(f'❌ Error restoring portfolio: {e}')
         return jsonify({'error': str(e)}), 500
 
+@app.route('/get_trade_pnl_array/<trade_id>')
+def get_trade_pnl_array(trade_id):
+    """Get P&L time series array for a specific trade"""
+    try:
+        if trade_id not in portfolio.trades:
+            return jsonify({'error': f'Trade {trade_id} not found'}), 404
+        
+        trade = portfolio.trades[trade_id]
+        
+        # Get the P&L array from the trade
+        pnl_array = getattr(trade, 'pnl_array', [])
+        pnl_array_primary = getattr(trade, 'pnl_array_primary', [])
+        pnl_array_secondary = getattr(trade, 'pnl_array_secondary', [])
+        
+        if not pnl_array and not pnl_array_primary and not pnl_array_secondary:
+            return jsonify({
+                'success': False,
+                'error': 'No P&L array data available for this trade. Try updating real-time P&L first.'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'pnl_array': pnl_array,
+            'pnl_array_primary': pnl_array_primary,
+            'pnl_array_secondary': pnl_array_secondary,
+            'trade_id': trade_id
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)

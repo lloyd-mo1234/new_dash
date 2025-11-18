@@ -397,7 +397,7 @@ def test_datetime_types_in_bdh():
         print(f"   End Date: {end_date.strftime('%Y-%m-%d')}")
         
         # Get historical data
-        print(f"\n🔧 Fetching historical data...")
+        print(f"\n� Fetching historical data...")
         try:
             df = blp.bdh(
                 tickers=test_security,

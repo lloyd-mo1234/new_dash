@@ -710,6 +710,11 @@ class Trade:
         self.pnl = 0
         self.positions_pnl = 0
         
+        # PnL array attribute - calculated and stored after positions are created
+        self.pnl_array = []  # List of (date, pnl) tuples
+        self.pnl_array_primary = []  # List of (date, pnl) tuples for primary positions only
+        self.pnl_array_secondary = []  # List of (date, pnl) tuples for secondary positions only
+        
     def add_position(self, price: float, size, instrument: str = None, position_type: str = 'primary'):
         """
         Add a position to the trade
@@ -754,8 +759,14 @@ class Trade:
     def get_weighted_average_price(self) -> float: 
         return 0.0
 
-    def create_positions(self):
-        """Create positions for all prices and sizes based on trade typology"""
+    def create_positions(self, futures_tick_data: pd.DataFrame = None, historical_prices: pd.DataFrame = None):
+        """
+        Create positions for all prices and sizes based on trade typology
+        
+        Args:
+            futures_tick_data: DataFrame with futures contract details (optional, from portfolio)
+            historical_prices: DataFrame with historical futures prices (optional, from portfolio)
+        """
         self.positions = []
         self.positions_secondary = []
         
@@ -908,6 +919,35 @@ class Trade:
             return False
         
         print(f"✅ Created {len(self.positions)} primary positions for trade {self.trade_id}")
+        
+        # Calculate and store PnL arrays for all positions
+        print(f"📊 Calculating PnL arrays for trade {self.trade_id}...")
+        try:
+            array_pnl_result = self.calculate_array_pnl(
+                futures_tick_data=futures_tick_data,
+                historical_prices=historical_prices
+            )
+            
+            if array_pnl_result.get('error'):
+                print(f"⚠️ Error calculating PnL arrays: {array_pnl_result['error']}")
+            else:
+                # Store the PnL arrays in the trade object
+                self.pnl_array = array_pnl_result.get('pnl_array', [])
+                self.pnl_array_primary = array_pnl_result.get('primary_pnl_array', [])
+                self.pnl_array_secondary = array_pnl_result.get('secondary_pnl_array', [])
+                
+                print(f"✅ Stored PnL arrays for {len(self.pnl_array)} dates")
+                print(f"   - Total PnL array: {len(self.pnl_array)} dates")
+                print(f"   - Primary PnL array: {len(self.pnl_array_primary)} dates")
+                print(f"   - Secondary PnL array: {len(self.pnl_array_secondary)} dates")
+                
+        except Exception as e:
+            print(f"❌ Error calculating PnL arrays: {e}")
+            # Initialize empty arrays on error
+            self.pnl_array = []
+            self.pnl_array_primary = []
+            self.pnl_array_secondary = []
+        
         return True
     
     def calculate_pnl(self, live_price: float = None, use_xc: bool = True, curve_handle: str = None, 
@@ -1170,6 +1210,9 @@ class Portfolio:
         # Create trades directory if it doesn't exist
         os.makedirs(self.storage_dir, exist_ok=True)
         
+        # Futures tick data attribute - stored at portfolio level
+        self.futures_tick_data = None
+        
         # Load existing trades from file
         self.load_from_file()
         
@@ -1324,16 +1367,32 @@ class Portfolio:
         """Initialize positions for all trades in the portfolio using new position system"""
         print("🔄 Initializing positions for all trades...")
         
+        # Get futures tick data if we have futures trades and it's not already loaded
+        if self.futures_tick_data is None:
+            futures_instruments = get_futures_instrument_names(self)
+            if futures_instruments:
+                print("📊 Getting futures tick data for portfolio...")
+                self.futures_tick_data = get_futures_details(futures_instruments)
+        
+        # Get historical prices for futures if needed
+        historical_prices = None
+        if self.futures_tick_data is not None and not self.futures_tick_data.empty:
+            historical_prices = get_futures_history(self)
+        
         total_positions = 0
         successful_trades = 0
         
         for trade_id, trade in self.trades.items():
             print(f"🔄 Creating positions for trade: {trade_id}")
             
-            if trade.create_positions():
+            # Pass futures_tick_data and historical_prices to create_positions
+            if trade.create_positions(
+                futures_tick_data=self.futures_tick_data,
+                historical_prices=historical_prices
+            ):
                 successful_trades += 1
-                total_positions += len(trade.positions)
-                print(f"✅ Trade {trade_id}: {len(trade.positions)} positions created")
+                total_positions += len(trade.positions) + len(trade.positions_secondary)
+                print(f"✅ Trade {trade_id}: {len(trade.positions)} primary + {len(trade.positions_secondary)} secondary positions")
             else:
                 print(f"❌ Failed to create positions for trade {trade_id}")
         

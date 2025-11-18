@@ -161,6 +161,20 @@
             background: rgba(255, 107, 107, 0.1);
         }
         
+        .btn-pnl {
+            background: transparent;
+            color: #00d4ff;
+            border: none;
+            padding: 2px 6px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .btn-pnl:hover {
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
         .trades-list {
             max-height: 300px;
             overflow-y: auto;
@@ -699,7 +713,7 @@
                             <th style="width: 80px;">Avg Entry</th>
                             <th style="width: 80px;">Total 01</th>
                             <th style="width: 80px;">P&L</th>
-                            <th style="width: 80px;">Col 7</th>
+                            <th style="width: 80px;">1d PnL</th>
                             <th style="width: 80px;">Col 8</th>
                             <th style="width: 80px;">Col 9</th>
                             <th style="width: 80px;">Col 10</th>
@@ -892,22 +906,49 @@
         let portfolio = {};
         let currentTradeId = null;
         
-        // Initialize empty charts
+        // Initialize empty portfolio chart (left) - feint aqua gridlines, transparent bg, white text
         Plotly.newPlot('portfolioChart', [], {
-            plot_bgcolor: '#1e1e1e',
-            paper_bgcolor: '#1e1e1e',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
             font: { color: '#ffffff' },
-            xaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
-            yaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
-            margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
+            xaxis: { 
+                gridcolor: 'rgba(0, 212, 255, 0.15)',
+                color: '#ffffff',
+                dtick: 'M1',
+                tickformat: '%m/%d/%y',
+                showline: false,
+                zeroline: false
+            },
+                        yaxis: { 
+                            gridcolor: 'rgba(0, 212, 255, 0.15)', 
+                            color: '#ffffff',
+                            showline: true,
+                            linecolor: '#ffffff',
+                            linewidth: 1,
+                            zeroline: false
+                        },
+            margin: { l: 50, r: 45, t: 45, b: 45, pad: 0 }
         });
         
+        // Initialize empty instrument chart (right)
         Plotly.newPlot('instrumentChart', [], {
-            plot_bgcolor: '#1e1e1e',
-            paper_bgcolor: '#1e1e1e',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
             font: { color: '#ffffff' },
-            xaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
-            yaxis: { gridcolor: '#2a4a5a', color: '#ffffff' },
+            xaxis: { 
+                gridcolor: 'rgba(0, 212, 255, 0.15)',
+                color: '#ffffff',
+                dtick: 'M1',
+                tickformat: '%b',
+                showline: false,
+                zeroline: false
+            },
+            yaxis: { 
+                gridcolor: 'rgba(0, 212, 255, 0.15)',
+                color: '#ffffff',
+                showline: false,
+                zeroline: false
+            },
             margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
         });
         
@@ -1278,33 +1319,8 @@
         }
         
         function updateCharts() {
-            // Update portfolio PnL chart
-            fetch('/get_portfolio_pnl_history')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const trace = {
-                        x: data.dates,
-                        y: data.pnl_values,
-                        type: 'scatter',
-                        mode: 'lines',
-                        name: 'Portfolio PnL',
-                        line: { color: '#00d4ff' }
-                    };
-                    
-                    Plotly.newPlot('portfolioChart', [trace], {
-                        plot_bgcolor: '#1e1e1e',
-                        paper_bgcolor: '#1e1e1e',
-                        font: { color: '#ffffff' },
-                        xaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Date' },
-                        yaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'PnL' },
-                        margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
-                    });
-                }
-            })
-            .catch(error => console.error('Error updating portfolio chart:', error));
-            
-            // Update instrument chart (placeholder for now)
+            // Portfolio chart (bottom left) will remain empty until user clicks a trade's PnL button
+            // Only update instrument chart (bottom right) as placeholder
             const instrumentTrace = {
                 x: [],
                 y: [],
@@ -1318,7 +1334,7 @@
                 plot_bgcolor: '#1e1e1e',
                 paper_bgcolor: '#1e1e1e',
                 font: { color: '#ffffff' },
-                xaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Date' },
+                xaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Date', dtick: 'M1', tickformat: '%b' },
                 yaxis: { gridcolor: '#2a4a5a', color: '#ffffff', title: 'Price' },
                 margin: { l: 45, r: 45, t: 45, b: 45, pad: 0 }
             });
@@ -3108,9 +3124,11 @@
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                 <td style="text-align: center; padding: 4px;">
-                    <button class="btn-remove" onclick="removeTrade('${trade.id}')" style="position: static;">remove</button>
+                    <button class="btn-pnl" onclick="showTradePnL('${trade.id}'); event.stopPropagation();" style="position: static;">PnL</button>
+                </td>
+                <td style="text-align: center; padding: 4px;">
+                    <button class="btn-remove" onclick="removeTrade('${trade.id}'); event.stopPropagation();" style="position: static;">remove</button>
                 </td>
             `;
             
@@ -4495,6 +4513,76 @@
             .finally(() => {
                 // Re-enable button
                 button.disabled = false;
+            });
+        }
+        
+        // Function to display trade PnL in the bottom left chart
+        function showTradePnL(tradeId) {
+            console.log('📊 Fetching PnL data for trade:', tradeId);
+            
+            fetch(`/get_trade_pnl_array/${tradeId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.pnl_array && data.pnl_array.length > 0) {
+                    console.log('✅ PnL array received:', data.pnl_array.length, 'dates');
+                    
+                    // Extract dates and PnL values - ensure dates are in ISO format for Plotly
+                    const dates = data.pnl_array.map(item => {
+                        const dateStr = item[0];
+                        // If it's already an ISO string or parseable date, return it
+                        // Otherwise convert it to ISO format
+                        const date = new Date(dateStr);
+                        return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+                    });
+                    const pnlValues = data.pnl_array.map(item => item[1]);
+                    
+                    // Create trace for total PnL only
+                    const totalTrace = {
+                        x: dates,
+                        y: pnlValues,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Total P&L',
+                        line: { color: '#00d4ff', width: 2 },
+                        hovertemplate: '%{x|%m/%d/%y}<br>%{y:$,.0f}<extra></extra>'
+                    };
+                    
+                    const traces = [totalTrace];
+                    
+                    // Update the portfolio chart with trade PnL - feint aqua gridlines, transparent bg, white text
+                    Plotly.newPlot('portfolioChart', traces, {
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        font: { color: '#ffffff' },
+                        xaxis: { 
+                            type: 'date',
+                            gridcolor: 'rgba(0, 212, 255, 0.15)', 
+                            color: '#ffffff', 
+                            tickformat: '%d %b %y',
+                            hoverformat: '%d %b %y',
+                            showline: false,
+                            zeroline: false
+                        },
+                        yaxis: { 
+                            gridcolor: 'rgba(0, 212, 255, 0.15)', 
+                            color: '#ffffff',
+                            showline: false,
+                            zeroline: false
+                        },
+                        title: { text: `Trade P&L: ${tradeId}`, font: { color: '#00d4ff', size: 14 } },
+                        margin: { l: 50, r: 45, t: 50, b: 45, pad: 0 },
+                        showlegend: false
+                    });
+                    
+                    console.log('✅ Trade PnL chart updated');
+                } else {
+                    console.error('❌ No PnL data available for trade:', tradeId);
+                    alert('No P&L data available for this trade. Try updating real-time P&L first.');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching trade PnL:', error);
+                alert('Error fetching trade P&L: ' + error.message);
             });
         }
         
