@@ -372,7 +372,6 @@ def get_realtime_rates():
                 try:
                     # For EFP, the primary expression is the swap leg
                     # Handle it as a swap expression
-                    print(f"🔄 Processing EFP swap leg: {expression}")
                     
                     # Check if it's a complex swap expression
                     if any(op in expression for op in ['+', '-', '*', '/']) and re.search(r'[a-z]+\.\d+[ymd]', expression.lower()):
@@ -414,10 +413,8 @@ def get_realtime_rates():
                             rates[label] = f"{latest_rate:.3f}%"
                             base_rates[label] = latest_rate
                     
-                    print(f"✅ EFP swap leg rate for {label}: {rates[label]}")
                     
                 except Exception as e:
-                    print(f"❌ Error processing EFP swap leg '{expression}': {e}")
                     rates[label] = '--'
                     base_rates[label] = None
                 
@@ -457,7 +454,6 @@ def get_realtime_rates():
                             px_mid = futures_df.loc[instrument, 'px_mid']
                             result_value += coefficient * px_mid
                         else:
-                            print(f"⚠️ Instrument {instrument} not found in futures data")
                             all_instruments_found = False
                             break
                     
@@ -469,7 +465,6 @@ def get_realtime_rates():
                         base_rates[label] = None
                     
                 except Exception as e:
-                    print(f"❌ Error processing futures expression '{expression}': {e}")
                     rates[label] = '--'
                     base_rates[label] = None
                 
@@ -1009,16 +1004,12 @@ def add_trade():
         entry_insertion_dates_secondary = data.get('entry_insertion_dates_secondary', [])
         
         # 🐛 DEBUG: Log insertion dates received from modal
-        print(f'🐛 DEBUG [add_trade] - Insertion dates received from modal:')
-        print(f'   - entry_insertion_dates: {entry_insertion_dates}')
-        print(f'   - entry_insertion_dates_secondary: {entry_insertion_dates_secondary}')
         
         # For EFP trades, use separate arrays if provided
         is_efp = primary_typology == 'efp' and secondary_typology
         
         if is_efp and (entry_prices_secondary or entry_sizes_secondary):
             # EFP with separate arrays - use them directly
-            print(f"✅ EFP trade with separate arrays: {len(entry_prices)} primary, {len(entry_prices_secondary)} secondary")
             
             # Primary positions (swap leg)
             for price, size in zip(entry_prices, entry_sizes):
@@ -1042,10 +1033,6 @@ def add_trade():
             trade.primary_pos_insertion_dt = entry_insertion_dates if entry_insertion_dates else []
             trade.secondary_pos_insertion_dt = entry_insertion_dates_secondary if entry_insertion_dates_secondary else []
             
-            # 🐛 DEBUG: Log insertion dates stored in trade object (EFP)
-            print(f'🐛 DEBUG [add_trade EFP] - Insertion dates stored in trade object:')
-            print(f'   - trade.primary_pos_insertion_dt: {trade.primary_pos_insertion_dt}')
-            print(f'   - trade.secondary_pos_insertion_dt: {trade.secondary_pos_insertion_dt}')
         else:
             # Non-EFP trade - store all in primary arrays
             for price, size in zip(entry_prices, entry_sizes):
@@ -1059,9 +1046,6 @@ def add_trade():
             # CRITICAL FIX: Set primary insertion date array for non-EFP trades
             trade.primary_pos_insertion_dt = entry_insertion_dates if entry_insertion_dates else []
             
-            # 🐛 DEBUG: Log insertion dates stored in trade object (non-EFP)
-            print(f'🐛 DEBUG [add_trade non-EFP] - Insertion dates stored in trade object:')
-            print(f'   - trade.primary_pos_insertion_dt: {trade.primary_pos_insertion_dt}')
         
         # Calculate and store total trade P&L if curves are available
         total_trade_pnl = calculate_total_trade_pnl(trade)
@@ -1090,28 +1074,12 @@ def add_trade():
 def get_trades():
     """Get all trades in the portfolio with stored P&L data"""
     try:
-        print(" ===== LOADING TRADES FROM PORTFOLIO OBJECT =====")
-        print(f"📊 Portfolio object details:")
-        print(f"   - Total trades in portfolio: {len(portfolio.trades)}")
-        print(f"   - Portfolio storage file: {portfolio.storage_file}")
-        print(f"   - Portfolio last P&L update: {getattr(portfolio, 'last_pnl_update', 'None')}")
-        print(f"   - Portfolio total P&L: {getattr(portfolio, 'total_portfolio_pnl', 0.0)}")
         
         trades_data = {}
         
         for trade_id, trade in portfolio.trades.items():
             # Log each trade with group_id information
             group_id = getattr(trade, 'group_id', None)
-            print(f"📋 Trade: {trade_id}")
-            print(f"   - Group ID: {group_id}")
-            print(f"   - Typology: {trade.typology}")
-            print(f"   - Secondary Typology: {trade.secondary_typology}")
-            print(f"   - Instrument Details: {trade.instrument_details}")
-            print(f"   - Prices: {trade.prices}")
-            print(f"   - Sizes: {trade.sizes}")
-            print(f"   - Stored P&L: {getattr(trade, 'stored_pnl', 0.0)}")
-            print(f"   - P&L Timestamp: {getattr(trade, 'pnl_timestamp', None)}")
-            
             # Use stored P&L instead of calculating every time
             stored_pnl = getattr(trade, 'stored_pnl', 0.0)
             pnl_timestamp = getattr(trade, 'pnl_timestamp', None)
@@ -1144,9 +1112,7 @@ def get_trades():
             'total_portfolio_pnl': getattr(portfolio, 'total_portfolio_pnl', 0.0)
         }
         
-        print("🔄 ===== PORTFOLIO OBJECT LOADING COMPLETE =====")
-        print(f"📤 Returning {len(trades_data)} trades to frontend")
-        
+       
         return jsonify({
             'success': True,
             'trades': trades_data,
@@ -1154,7 +1120,6 @@ def get_trades():
         })
         
     except Exception as e:
-        print(f"❌ Error in get_trades: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get_trade_details/<trade_id>')
@@ -1168,11 +1133,8 @@ def get_trade_details(trade_id):
         
         # CRITICAL FIX: Create positions from JSON data if they don't exist
         if not trade.positions and (trade.prices or trade.sizes):
-            print(f"🔧 Creating positions for {trade_id} from stored data...")
             if not trade.create_positions():
-                print(f"⚠️ Failed to create positions for {trade_id}")
-            else:
-                print(f"✅ Created {len(trade.positions)} primary and {len(trade.positions_secondary)} secondary positions")
+                print("failed to create positions")
         
         trade_details = portfolio.get_trade_details(trade_id)
         
@@ -1241,16 +1203,12 @@ def update_trade():
         entry_insertion_dates_secondary = data.get('entry_insertion_dates_secondary', [])
         
         # 🐛 DEBUG: Log insertion dates received from modal (update_trade)
-        print(f'🐛 DEBUG [update_trade] - Insertion dates received from frontend:')
-        print(f'   - entry_insertion_dates: {entry_insertion_dates}')
-        print(f'   - entry_insertion_dates_secondary: {entry_insertion_dates_secondary}')
         
         # Check if this is an EFP trade that needs separate position handling
         is_efp = trade.typology == 'efp' and trade.secondary_typology
         
         if is_efp and (entry_prices_secondary or entry_sizes_secondary):
             # EFP with separate arrays
-            print(f"✅ Updating EFP trade with separate arrays: {len(entry_prices)} primary, {len(entry_prices_secondary)} secondary")
             
             # Clear existing arrays
             trade.prices = []
@@ -1599,18 +1557,13 @@ def add_position():
 def edit_position():
     """Edit an existing position's price and/or size"""
     try:
-        print('🔥 ============================= EDIT POSITION START =============================')
         
         data = request.get_json()
-        print('📥 Request data received:', data)
         
         # 🐛 EXPLICIT DEBUG: Log the exact insertion_date parameter
         insertion_date_from_request = data.get('insertion_date')
-        print(f'🐛 DEBUG [edit_position] - EXPLICIT insertion_date parameter: {insertion_date_from_request}')
-        print(f'🐛 DEBUG [edit_position] - insertion_date type: {type(insertion_date_from_request)}')
         
         if not data:
-            print('❌ No JSON data received')
             return jsonify({'error': 'No JSON data received'}), 400
         
         # Extract parameters with detailed logging
@@ -1621,101 +1574,59 @@ def edit_position():
         new_size = data.get('size')
         new_insertion_date = data.get('insertion_date')  # NEW: Get insertion date from request
         
-        # 🐛 DEBUG: Log insertion date received from frontend
-        print(f'🐛 DEBUG [edit_position] - Insertion date received from frontend: {new_insertion_date}')
-        
-        print('📋 Extracted parameters:', {
-            'trade_id': trade_id,
-            'position_index': position_index,
-            'position_type': position_type,
-            'new_price': new_price,
-            'new_size': new_size,
-            'new_insertion_date': new_insertion_date
-        })
         
         if not trade_id or trade_id not in portfolio.trades:
-            print(f'❌ Invalid trade_id: {trade_id}')
-            print(f'❌ Available trades: {list(portfolio.trades.keys())}')
             return jsonify({'error': 'Valid trade_id is required'}), 400
         
         trade = portfolio.trades[trade_id]
-        print(f'✅ Found trade: {trade_id}')
-        print(f'🔍 Trade details: typology={trade.typology}, secondary_typology={trade.secondary_typology}')
         
         # CRITICAL FIX: Create positions from JSON data if they don't exist
         if position_type == 'secondary':
             if not hasattr(trade, 'positions_secondary'):
-                print(f'⚠️ Trade has no positions_secondary attribute, creating empty list')
                 trade.positions_secondary = []
             
             if not trade.positions_secondary and (trade.prices_secondary or trade.sizes_secondary):
-                print(f'🔧 Creating secondary positions from stored data (edit_position)...')
                 if not trade.create_positions():
-                    print(f'❌ Failed to create positions from stored data')
                     return jsonify({'error': 'Failed to create positions from stored data'}), 500
-                else:
-                    print(f'✅ Created {len(trade.positions)} primary and {len(trade.positions_secondary)} secondary positions')
                     
         else:
             if not hasattr(trade, 'positions'):
-                print(f'⚠️ Trade has no positions attribute, creating empty list')
                 trade.positions = []
             
             if not trade.positions and (trade.prices or trade.sizes):
-                print(f'🔧 Creating primary positions from stored data (edit_position)...')
                 if not trade.create_positions():
-                    print(f'❌ Failed to create positions from stored data')
                     return jsonify({'error': 'Failed to create positions from stored data'}), 500
-                else:
-                    print(f'✅ Created {len(trade.positions)} primary and {len(trade.positions_secondary)} secondary positions')
         
         # Get the position with detailed logging
         if position_type == 'secondary':
-            print(f'🔍 Looking for SECONDARY position at index {position_index}')
-            print(f'🔍 Secondary positions available: {len(trade.positions_secondary)}')
             
             if position_index >= len(trade.positions_secondary):
-                print(f'❌ Position {position_index} not found in secondary positions (only {len(trade.positions_secondary)} available)')
-                print(f'❌ Available secondary positions: {[f"Index {i}: {type(pos).__name__}" for i, pos in enumerate(trade.positions_secondary)]}')
                 return jsonify({'error': f'Position {position_index} not found in secondary positions'}), 404
             
             position = trade.positions_secondary[position_index]
-            print(f'✅ Found SECONDARY position at index {position_index}: {type(position).__name__}')
-            print(f'🔍 Current position details: handle={position.handle}, price={position.price}, size={position.size}')
-            
         else:
-            print(f'🔍 Looking for PRIMARY position at index {position_index}')
-            print(f'🔍 Primary positions available: {len(trade.positions)}')
             
             if position_index >= len(trade.positions):
-                print(f'❌ Position {position_index} not found in primary positions (only {len(trade.positions)} available)')
-                print(f'❌ Available primary positions: {[f"Index {i}: {type(pos).__name__}" for i, pos in enumerate(trade.positions)]}')
                 return jsonify({'error': f'Position {position_index} not found'}), 404
             
             position = trade.positions[position_index]
-            print(f'✅ Found PRIMARY position at index {position_index}: {type(position).__name__}')
-            print(f'🔍 Current position details: handle={position.handle}, price={position.price}, size={position.size}')
         
         # Update position with new values if provided
         if new_price is not None:
             old_price = position.price
             position.price = float(new_price)
-            print(f'📝 Updated position {position_index} price: {old_price} -> {position.price}')
         
         if new_size is not None:
             old_size = position.size
             if isinstance(new_size, list):
                 position.size = [float(s) for s in new_size]
-                print(f'📝 Updated position {position_index} size (array): {old_size} -> {position.size}')
             else:
                 position.size = float(new_size)
-                print(f'📝 Updated position {position_index} size (single): {old_size} -> {position.size}')
         
         # NEW: Update insertion date if provided
         if new_insertion_date is not None:
             old_insertion_date = getattr(position, 'insertion_date', None)
             position.insertion_date = new_insertion_date
-            print(f'📝 Updated position {position_index} insertion date: {old_insertion_date} -> {position.insertion_date}')
             
             # Also update the trade's insertion date arrays (ensure arrays exist and are long enough)
             if position_type == 'secondary':
@@ -1729,7 +1640,6 @@ def edit_position():
                 
                 # Update the insertion date
                 trade.secondary_pos_insertion_dt[position_index] = new_insertion_date
-                print(f'📝 Updated trade secondary insertion date array at index {position_index}: {new_insertion_date}')
             else:
                 # Ensure primary insertion date array exists
                 if not hasattr(trade, 'primary_pos_insertion_dt'):
@@ -1741,50 +1651,30 @@ def edit_position():
                 
                 # Update the insertion date
                 trade.primary_pos_insertion_dt[position_index] = new_insertion_date
-                print(f'📝 Updated trade primary insertion date array at index {position_index}: {new_insertion_date}')
         
         # Recreate XC structures with new values
         if isinstance(position, XCSwapPosition):
-            print('🔄 Processing XCSwapPosition - marking for XC swaps recreation')
             position.xc_created = False
             position.xc_swaps = []
-            print('🔄 Marked XC swaps for recreation with new values')
             
             # Actually recreate the swaps with new values
-            print('🔧 Attempting to recreate XC swaps...')
-            if position.create_xc_swaps():
-                print(f'✅ XC swaps recreated successfully with new values')
-                print(f'🔍 Created {len(position.xc_swaps)} XC swap components')
-                for i, swap_info in enumerate(position.xc_swaps):
-                    print(f'   Component {i}: {swap_info["instrument"]} (coeff: {swap_info["coefficient"]}, notional: {swap_info["notional"]})')
-            else:
-                print(f'❌ Failed to recreate XC swaps')
+            if not position.create_xc_swaps():
                 return jsonify({'error': 'Failed to recreate XC swaps with new values'}), 500
         
         # Recreate futures expression with new values
         elif isinstance(position, XCFuturesPosition):
-            print('🔄 Processing XCFuturesPosition - marking for futures expression recreation')
             position.futures_built = False
             position.component_rates = {}  # Clear cached component rates to force recalculation
-            print('🔄 Marked futures expression for recreation with new values')
             
             # Actually rebuild the futures expression with new values
-            print('🔧 Attempting to rebuild futures expression...')
-            if position.build_futures_expression():
-                print(f'✅ Futures expression rebuilt successfully with new values')
-                print(f'🔍 Built expression with {len(position.components)} components')
-                for i, comp in enumerate(position.components):
-                    print(f'   Component {i}: {comp["instrument"]} (coeff: {comp["coefficient"]})')
-                print(f'🔍 Component rates calculated: {position.component_rates}')
-            else:
-                print(f'❌ Failed to rebuild futures expression')
+            if not position.build_futures_expression():
                 return jsonify({'error': 'Failed to rebuild futures expression with new values'}), 500
         
         else:
-            print(f'⚠️ Unknown position type: {type(position).__name__}')
+            print("")
         
-        print(f'✅ Position {position_index} ({position_type}) updated successfully')
-        print('🔥 ============================= EDIT POSITION END ===============================')
+        print("")
+        print("")
         
         return jsonify({
             'success': True,
@@ -1795,10 +1685,10 @@ def edit_position():
         })
         
     except Exception as e:
-        print(f'❌ Exception in edit_position: {str(e)}')
-        print(f'❌ Exception type: {type(e).__name__}')
+        print("")
+        print("")
         import traceback
-        print(f'❌ Full traceback: {traceback.format_exc()}')
+        print("")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1806,13 +1696,10 @@ def edit_position():
 def calculate_position_pnl():
     """Calculate P&L for an existing position"""
     try:
-        print('🔥 ========================== CALCULATE POSITION PNL START ========================')
         
         data = request.get_json()
-        print('📥 PnL calculation request data:', data)
         
         if not data:
-            print('❌ No JSON data received for PnL calculation')
             return jsonify({'error': 'No JSON data received'}), 400
         
         # Extract parameters with detailed logging
@@ -1820,94 +1707,43 @@ def calculate_position_pnl():
         position_index = data.get('position_index', 0)
         position_type = data.get('positionType', 'primary')  # 'primary' or 'secondary'
         
-        print('📋 PnL calculation parameters:', {
-            'trade_id': trade_id,
-            'position_index': position_index,
-            'position_type': position_type
-        })
         
         if not trade_id or trade_id not in portfolio.trades:
-            print(f'❌ Invalid trade_id for PnL calculation: {trade_id}')
-            print(f'❌ Available trades: {list(portfolio.trades.keys())}')
             return jsonify({'error': 'Valid trade_id is required'}), 400
         
         trade = portfolio.trades[trade_id]
-        print(f'✅ Found trade for PnL calculation: {trade_id}')
-        print(f'🔍 Trade details: typology={trade.typology}, secondary_typology={trade.secondary_typology}')
         
         # CRITICAL FIX: Create positions from JSON data if they don't exist
         positions_array = trade.positions_secondary if position_type == 'secondary' else trade.positions
         
-        print(f'🔍 Initial positions array check ({position_type}):')
-        print(f'   - Array length: {len(positions_array) if positions_array else 0}')
-        print(f'   - Array exists: {positions_array is not None}')
-        print(f'   - Trade has prices: {bool(trade.prices)}')
-        print(f'   - Trade has sizes: {bool(trade.sizes)}')
-        print(f'   - Trade has secondary prices: {bool(trade.prices_secondary)}')
-        print(f'   - Trade has secondary sizes: {bool(trade.sizes_secondary)}')
         
         if not positions_array and (trade.prices or trade.sizes):
-            print(f"🔧 Creating positions for {trade_id} from stored data (calculate_position_pnl)...")
             if not trade.create_positions():
-                print(f'❌ Failed to create positions from stored data for PnL calculation')
                 return jsonify({'error': 'Failed to create positions from stored data'}), 500
             else:
-                print(f"✅ Created {len(trade.positions)} primary and {len(trade.positions_secondary)} secondary positions")
                 # Update positions_array reference after creation
                 positions_array = trade.positions_secondary if position_type == 'secondary' else trade.positions
-                print(f'🔄 Updated positions array reference, new length: {len(positions_array)}')
         
         # Get the position with detailed validation
-        print(f'🔍 Looking for {position_type.upper()} position at index {position_index}')
-        print(f'🔍 Positions array final length: {len(positions_array)}')
         
         if position_index >= len(positions_array):
-            print(f'❌ Position {position_index} not found in {position_type} positions (only {len(positions_array)} available)')
-            print(f'❌ Available positions: {[f"Index {i}: {type(pos).__name__}" for i, pos in enumerate(positions_array)]}')
             return jsonify({'error': f'Position {position_index} not found'}), 404
             
         position = positions_array[position_index]
-        print(f'✅ Found {position_type.upper()} position at index {position_index}: {type(position).__name__}')
-        print(f'🔍 Position details for PnL calculation:')
-        print(f'   - Handle: {position.handle}')
-        print(f'   - Instrument: {position.instrument}')
-        print(f'   - Price: {position.price}')
-        print(f'   - Size: {position.size}')
         
         # Calculate P&L based on position type with comprehensive debugging
         if isinstance(position, XCFuturesPosition):
-            print('🔧 Processing XCFuturesPosition for P&L calculation...')
-            print(f'🔍 Futures position details:')
-            print(f'   - Components count: {len(position.components)}')
-            print(f'   - Component rates cached: {bool(position.component_rates)}')
-            print(f'   - Futures built: {position.futures_built}')
-            
-            # Log each component
-            for i, comp in enumerate(position.components):
-                print(f'   Component {i}: {comp["instrument"]} (coeff: {comp["coefficient"]})')
             
             # Get futures details
             unique_instruments = list(set([comp['instrument'] for comp in position.components]))
-            print(f'🔍 Unique instruments for futures data: {unique_instruments}')
             
             futures_df = get_futures_details(unique_instruments)
-            print(f'🔍 Futures data fetched:')
             if futures_df is not None and not futures_df.empty:
-                print(f'   - Data shape: {futures_df.shape}')
-                print(f'   - Instruments in data: {futures_df.index.tolist()}')
-                print(f'   - Columns: {futures_df.columns.tolist()}')
                 for inst in unique_instruments:
                     if inst in futures_df.index:
                         px_mid = futures_df.loc[inst, 'px_mid']
-                        print(f'   - {inst}: px_mid = {px_mid}')
-                    else:
-                        print(f'   - {inst}: NOT FOUND in futures data!')
-            else:
-                print('   - Futures data is None or empty!')
             
-            print('🔧 Starting futures P&L calculation...')
             pnl_result = position.calculate_pnl(futures_df)
-            print(f'📊 Futures P&L calculation result: {pnl_result}')
             
             return jsonify({
                 'success': True,
@@ -1929,19 +1765,10 @@ def calculate_position_pnl():
             })
         
         elif isinstance(position, XCSwapPosition):
-            print('🔧 Processing XCSwapPosition for P&L calculation...')
-            print(f'🔍 Swap position details:')
-            print(f'   - XC swaps count: {len(position.xc_swaps)}')
-            print(f'   - XC created: {position.xc_created}')
             
-            # Log each XC swap component
-            for i, swap_info in enumerate(position.xc_swaps):
-                print(f'   XC Swap {i}: {swap_info["instrument"]} (coeff: {swap_info["coefficient"]}, notional: {swap_info["notional"]}, rate: {swap_info.get("rate", "N/A")})')
             
-            print('🔧 Starting swap P&L calculation...')
             # Calculate P&L
             pnl_result = position.calculate_pnl()
-            print(f'📊 Swap P&L calculation result: {pnl_result}')
             
             # Get component details for response
             component_details = []
@@ -1953,7 +1780,6 @@ def calculate_position_pnl():
                     'rate': swap_info['rate']
                 })
             
-            print(f'📋 Component details prepared: {len(component_details)} components')
             
             return jsonify({
                 'success': True,
@@ -1972,16 +1798,11 @@ def calculate_position_pnl():
             })
         
         else:
-            print(f'❌ Unknown position type for P&L calculation: {type(position).__name__}')
             return jsonify({'error': 'Unknown position type'}), 500
         
-        print('🔥 ========================== CALCULATE POSITION PNL END ==========================')
         
     except Exception as e:
-        print(f'❌ Exception in calculate_position_pnl: {str(e)}')
-        print(f'❌ Exception type: {type(e).__name__}')
         import traceback
-        print(f'❌ Full traceback: {traceback.format_exc()}')
         return jsonify({'error': str(e)}), 500
 
 @app.route('/restore_portfolio', methods=['POST'])
@@ -1995,7 +1816,6 @@ def restore_portfolio():
         
         backup_trades = data.get('trades', {})
         
-        print(f'🔄 Restoring portfolio from backup ({len(backup_trades)} trades)...')
         
         # Clear current portfolio
         portfolio.trades.clear()
@@ -2033,7 +1853,6 @@ def restore_portfolio():
         # Save restored portfolio to file
         portfolio.save_to_file()
         
-        print(f'✅ Portfolio restored successfully with {len(portfolio.trades)} trades')
         
         return jsonify({
             'success': True,
@@ -2041,7 +1860,6 @@ def restore_portfolio():
         })
         
     except Exception as e:
-        print(f'❌ Error restoring portfolio: {e}')
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get_trade_pnl_array/<trade_id>')
@@ -2073,6 +1891,115 @@ def get_trade_pnl_array(trade_id):
         })
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_group_pnl_array/<group_id>')
+def get_group_pnl_array(group_id):
+    """Get combined P&L time series array for all trades in a group"""
+    try:
+        print(f"\n🔍 === GROUP PNL ARRAY REQUEST ===")
+        print(f"Requested group_id: '{group_id}'")
+        
+        # Find all trades with this group_id
+        group_trades = [trade for trade in portfolio.trades.values() 
+                       if getattr(trade, 'group_id', None) == group_id]
+        
+        print(f"✅ Found {len(group_trades)} trades in group")
+        
+        if not group_trades:
+            return jsonify({
+                'success': False,
+                'error': f'No trades found in group {group_id}'
+            }), 404
+        
+        # Helper function to convert datetime to date
+        def to_date(date_obj):
+            """Convert datetime.datetime or datetime.date to datetime.date"""
+            if isinstance(date_obj, datetime):
+                return date_obj.date()
+            return date_obj
+        
+        # Collect all dates and aggregate PnL by date (use datetime.date as keys)
+        date_pnl_map = {}  # {date: total_pnl}
+        date_primary_map = {}  # {date: primary_pnl}
+        date_secondary_map = {}  # {date: secondary_pnl}
+        
+        for trade in group_trades:
+            print(f"\n  Processing trade: {trade.trade_id}")
+            
+            # Get PnL arrays from trade
+            pnl_array = getattr(trade, 'pnl_array', [])
+            pnl_array_primary = getattr(trade, 'pnl_array_primary', [])
+            pnl_array_secondary = getattr(trade, 'pnl_array_secondary', [])
+            
+            print(f"    Total entries: {len(pnl_array)}, Primary: {len(pnl_array_primary)}, Secondary: {len(pnl_array_secondary)}")
+            
+            # Aggregate total PnL - convert all dates to date objects
+            for date_obj, pnl_value in pnl_array:
+                date_key = to_date(date_obj)
+                if date_key not in date_pnl_map:
+                    date_pnl_map[date_key] = 0.0
+                date_pnl_map[date_key] += pnl_value
+            
+            # Aggregate primary PnL - convert all dates to date objects
+            for date_obj, pnl_value in pnl_array_primary:
+                date_key = to_date(date_obj)
+                if date_key not in date_primary_map:
+                    date_primary_map[date_key] = 0.0
+                date_primary_map[date_key] += pnl_value
+            
+            # Aggregate secondary PnL - convert all dates to date objects
+            for date_obj, pnl_value in pnl_array_secondary:
+                date_key = to_date(date_obj)
+                if date_key not in date_secondary_map:
+                    date_secondary_map[date_key] = 0.0
+                date_secondary_map[date_key] += pnl_value
+        
+        # Check if we have any data
+        if not date_pnl_map and not date_primary_map and not date_secondary_map:
+            return jsonify({
+                'success': False,
+                'error': f'No P&L array data available for trades in group {group_id}. Try updating real-time P&L first.'
+            }), 404
+        
+        # Convert to sorted arrays with ISO date strings
+        combined_pnl_array = []
+        combined_primary_array = []
+        combined_secondary_array = []
+        
+        # Use union of all dates (all are now datetime.date objects, so sorting works)
+        all_dates = set(date_pnl_map.keys()) | set(date_primary_map.keys()) | set(date_secondary_map.keys())
+        
+        for date_obj in sorted(all_dates):
+            # Convert date to ISO string (YYYY-MM-DD format)
+            date_str = date_obj.strftime('%Y-%m-%d')
+            
+            # Add to arrays
+            combined_pnl_array.append([date_str, date_pnl_map.get(date_obj, 0.0)])
+            combined_primary_array.append([date_str, date_primary_map.get(date_obj, 0.0)])
+            combined_secondary_array.append([date_str, date_secondary_map.get(date_obj, 0.0)])
+        
+        print(f"\n✅ Returning combined arrays:")
+        print(f"   Total array: {len(combined_pnl_array)} dates")
+        print(f"   Primary array: {len(combined_primary_array)} dates")
+        print(f"   Secondary array: {len(combined_secondary_array)} dates")
+        if combined_pnl_array:
+            print(f"   Sample data: {combined_pnl_array[:2]}")
+        
+        return jsonify({
+            'success': True,
+            'pnl_array': combined_pnl_array,
+            'pnl_array_primary': combined_primary_array,
+            'pnl_array_secondary': combined_secondary_array,
+            'group_id': group_id,
+            'num_trades': len(group_trades),
+            'trade_ids': [trade.trade_id for trade in group_trades]
+        })
+        
+    except Exception as e:
+        print(f"\n❌ ERROR in get_group_pnl_array: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

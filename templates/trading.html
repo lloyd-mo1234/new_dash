@@ -1533,59 +1533,11 @@
                 currentTradeId = tradeId;
                 loadTradeForEditing(tradeId);
             } else {
-                // Creating new trade - generate timestamp-based ID and create placeholder
-                createTemporaryTrade();
+                // Creating new trade - just build blank modal WITHOUT creating backend entry
+                console.log('🆕 Building blank modal for new trade (no backend call)');
+                currentTradeId = null; // No trade ID yet
+                buildBlankModal();
             }
-        }
-        
-        function createTemporaryTrade() {
-            console.log('🆕 Creating temporary trade in portfolio...');
-            
-            // Generate timestamp-based trade ID (YYYYMMDD_HHMMSS)
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            
-            const tempTradeId = `${year}${month}${day}_${hours}${minutes}${seconds}`;
-            console.log('🆔 Generated temporary trade ID:', tempTradeId);
-            
-            // Create minimal trade object in backend
-            fetch('/add_trade', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: tempTradeId,
-                    typologies: ['swap'],  // Default to swap, will be updated
-                    instruments: [''],      // Empty for now, will be updated
-                    entry_prices: [],       // No positions yet
-                    entry_sizes: [],
-                    exit_prices: [],
-                    exit_sizes: []
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    console.log('✅ Temporary trade created in portfolio:', tempTradeId);
-                    currentTradeId = tempTradeId;
-                    
-                    // Now build the blank modal
-                    buildBlankModal();
-                } else {
-                    console.error('❌ Failed to create temporary trade:', data.error);
-                    alert('Error creating trade: ' + (data.error || 'Unknown error'));
-                    closeTradeModal();
-                }
-            })
-            .catch(error => {
-                console.error('❌ Error creating temporary trade:', error);
-                alert('Error creating trade: ' + error.message);
-                closeTradeModal();
-            });
         }
         
         function buildBlankModal() {
@@ -1983,38 +1935,10 @@
             
             console.log(`📊 Type: ${tradeType}, Instrument: ${instrument}`);
             
-            // Step 2: Initialize position in backend with ZERO values
-            console.log('🔧 Calling /add_position with price=0, size=0...');
-            
-            fetch('/add_position', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    trade_id: currentTradeId,
-                    tradeType: tradeType,
-                    positionType: tableType,
-                    instrument: instrument,
-                    price: 0.0,
-                    size: 0.0
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (!data.success) {
-                    console.error('❌ Failed to initialize position:', data.error);
-                    alert('Error adding position: ' + (data.error || 'Unknown error'));
-                    return;
-                }
-                
-                console.log('✅ Position initialized in backend at index:', data.position_index);
-                
-                // Step 3: Add UI row AFTER backend position is created
-                addPositionUIRow(tableType, tradeType, instrument);
-            })
-            .catch(error => {
-                console.error('❌ Error calling /add_position:', error);
-                alert('Error adding position: ' + error.message);
-            });
+            // Step 2: Add UI row directly (without backend call)
+            // The position will only be saved to JSON when user clicks "Save Trade"
+            console.log('🎨 Adding UI row without modifying JSON...');
+            addPositionUIRow(tableType, tradeType, instrument);
         }
         
         function addPositionUIRow(tableType, tradeType, instrument) {
@@ -2851,22 +2775,7 @@
                 });
                 
             } else {
-                // Creating new trade OR renaming temporary trade
-                if (needsRename) {
-                    console.log('🔄 Renaming temporary trade from', currentTradeId, 'to', tradeIdentifier);
-                    // Delete the old temporary trade first
-                    fetch(`/delete_trade/${currentTradeId}`, { method: 'DELETE' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            console.log('✅ Deleted temporary trade:', currentTradeId);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('⚠️ Error deleting temporary trade:', error);
-                    });
-                }
-                
+                // Creating new trade
                 console.log('💾 Creating new trade with ID:', tradeIdentifier);
                 
                 const submitData = {
@@ -3044,7 +2953,9 @@
                 <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
                 <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
                 <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
-                <td onclick="toggleTradeGroup('${groupId}')" style="cursor: pointer;">--</td>
+                <td style="text-align: center; padding: 4px;">
+                    <button class="btn-pnl" onclick="showGroupPnL('${groupId}'); event.stopPropagation();" style="position: static;">PnL</button>
+                </td>
                 <td style="text-align: center; padding: 4px;">
                     <span class="group-summary">${trades.length} trades</span>
                 </td>
@@ -4583,6 +4494,75 @@
             .catch(error => {
                 console.error('❌ Error fetching trade PnL:', error);
                 alert('Error fetching trade P&L: ' + error.message);
+            });
+        }
+        
+        // Function to display group PnL in the bottom left chart
+        function showGroupPnL(groupId) {
+            console.log('📊 Fetching PnL data for group:', groupId);
+            
+            fetch(`/get_group_pnl_array/${groupId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.pnl_array && data.pnl_array.length > 0) {
+                    console.log('✅ Group PnL array received:', data.pnl_array.length, 'dates');
+                    console.log('📊 Group contains', data.num_trades, 'trades:', data.trade_ids);
+                    
+                    // Extract dates and PnL values - ensure dates are in ISO format for Plotly
+                    const dates = data.pnl_array.map(item => {
+                        const dateStr = item[0];
+                        const date = new Date(dateStr);
+                        return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+                    });
+                    const pnlValues = data.pnl_array.map(item => item[1]);
+                    
+                    // Create trace for total group PnL
+                    const totalTrace = {
+                        x: dates,
+                        y: pnlValues,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Total P&L',
+                        line: { color: '#00d4ff', width: 2 },
+                        hovertemplate: '%{x|%m/%d/%y}<br>%{y:$,.0f}<extra></extra>'
+                    };
+                    
+                    const traces = [totalTrace];
+                    
+                    // Update the portfolio chart with group PnL
+                    Plotly.newPlot('portfolioChart', traces, {
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        font: { color: '#ffffff' },
+                        xaxis: { 
+                            type: 'date',
+                            gridcolor: 'rgba(0, 212, 255, 0.15)', 
+                            color: '#ffffff', 
+                            tickformat: '%d %b %y',
+                            hoverformat: '%d %b %y',
+                            showline: false,
+                            zeroline: false
+                        },
+                        yaxis: { 
+                            gridcolor: 'rgba(0, 212, 255, 0.15)', 
+                            color: '#ffffff',
+                            showline: false,
+                            zeroline: false
+                        },
+                        title: { text: `Group P&L: ${groupId} (${data.num_trades} trades)`, font: { color: '#00d4ff', size: 14 } },
+                        margin: { l: 50, r: 45, t: 50, b: 45, pad: 0 },
+                        showlegend: false
+                    });
+                    
+                    console.log('✅ Group PnL chart updated');
+                } else {
+                    console.error('❌ No PnL data available for group:', groupId);
+                    alert('No P&L data available for this group. Try updating real-time P&L first.');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching group PnL:', error);
+                alert('Error fetching group P&L: ' + error.message);
             });
         }
         

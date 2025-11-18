@@ -1,46 +1,57 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-18T10:52:13.344773",
-    "total_portfolio_pnl": -1657661.2494437725
+    "last_pnl_update": "2025-11-18T14:48:44.555323",
+    "total_portfolio_pnl": 12324347.358846426
   },
   "trades": {
-    "trade2": {
-      "trade_id": "trade2",
+    "efp1": {
+      "trade_id": "efp1",
       "typology": [
-        "future"
+        "efp"
       ],
-      "secondary_typology": null,
-      "group_id": "1",
+      "secondary_typology": "future",
+      "group_id": "",
       "prices": [
-        96
+        5.0
       ],
       "sizes": [
-        100
+        100.0
       ],
       "instrument_details": [
+        "aud.5y5y"
+      ],
+      "stored_pnl": 1972346.6794225345,
+      "pnl_timestamp": "2025-11-18T14:48:44.555323",
+      "prices_secondary": [
+        97.0,
+        96.0
+      ],
+      "sizes_secondary": [
+        100.0,
+        100.0
+      ],
+      "instrument_details_secondary": [
         "xmz5 comdty"
       ],
-      "stored_pnl": 384671.00000000437,
-      "pnl_timestamp": "2025-11-18T10:52:13.344773",
-      "prices_secondary": [],
-      "sizes_secondary": [],
-      "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null,
+      "stored_pnl_primary": 352000.67942254245,
+      "stored_pnl_secondary": 1620345.999999992,
       "primary_pos_insertion_dt": [
         "2025-11-18"
       ],
-      "secondary_pos_insertion_dt": []
+      "secondary_pos_insertion_dt": [
+        "2025-11-18",
+        "2025-11-18"
+      ]
     },
-    "trade4": {
-      "trade_id": "trade4",
+    "trade1": {
+      "trade_id": "trade1",
       "typology": [
         "swap"
       ],
       "secondary_typology": null,
-      "group_id": "1",
+      "group_id": "",
       "prices": [
-        5
+        6
       ],
       "sizes": [
         100
@@ -48,126 +59,8 @@
       "instrument_details": [
         "aud.5y5y"
       ],
-      "stored_pnl": 340795.27387892455,
-      "pnl_timestamp": "2025-11-18T10:52:13.344773",
-      "prices_secondary": [],
-      "sizes_secondary": [],
-      "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null,
-      "primary_pos_insertion_dt": [
-        "2025-11-18"
-      ],
-      "secondary_pos_insertion_dt": []
-    },
-    "trade5": {
-      "trade_id": "trade5",
-      "typology": [
-        "swap"
-      ],
-      "secondary_typology": null,
-      "group_id": "",
-      "prices": [
-        5
-      ],
-      "sizes": [
-        100
-      ],
-      "instrument_details": [
-        "aud.10y10y"
-      ],
-      "stored_pnl": -2671402.0233227164,
-      "pnl_timestamp": "2025-11-18T10:52:13.344773",
-      "prices_secondary": [],
-      "sizes_secondary": [],
-      "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null,
-      "primary_pos_insertion_dt": [
-        "2025-11-18"
-      ],
-      "secondary_pos_insertion_dt": []
-    },
-    "traedd3": {
-      "trade_id": "traedd3",
-      "typology": [
-        "future"
-      ],
-      "secondary_typology": null,
-      "group_id": "1",
-      "prices": [
-        97
-      ],
-      "sizes": [
-        -300
-      ],
-      "instrument_details": [
-        "ymz5 comdty"
-      ],
-      "stored_pnl": -663115.4999999941,
-      "pnl_timestamp": "2025-11-18T10:52:13.344773",
-      "prices_secondary": [],
-      "sizes_secondary": [],
-      "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null,
-      "primary_pos_insertion_dt": [
-        "2025-11-18"
-      ],
-      "secondary_pos_insertion_dt": []
-    },
-    "xmz5": {
-      "trade_id": "xmz5",
-      "typology": [
-        "future"
-      ],
-      "secondary_typology": null,
-      "group_id": "",
-      "prices": [
-        95.75,
-        95.75,
-        95.75
-      ],
-      "sizes": [
-        100,
-        100,
-        100
-      ],
-      "instrument_details": [
-        "xmz5 comdty"
-      ],
-      "stored_pnl": 509313.00000001315,
-      "pnl_timestamp": "2025-11-18T10:52:13.344773",
-      "prices_secondary": [],
-      "sizes_secondary": [],
-      "instrument_details_secondary": [],
-      "stored_pnl_primary": null,
-      "stored_pnl_secondary": null,
-      "primary_pos_insertion_dt": [
-        "2025-09-17",
-        "2025-10-17",
-        "2025-08-17"
-      ],
-      "secondary_pos_insertion_dt": []
-    },
-    "ymmmmaa": {
-      "trade_id": "ymmmmaa",
-      "typology": [
-        "future"
-      ],
-      "secondary_typology": null,
-      "group_id": "",
-      "prices": [
-        97
-      ],
-      "sizes": [
-        200
-      ],
-      "instrument_details": [
-        "ymz5 comdty"
-      ],
-      "stored_pnl": 442076.99999999604,
-      "pnl_timestamp": "2025-11-18T10:52:13.344773",
+      "stored_pnl": 10352000.679423891,
+      "pnl_timestamp": "2025-11-18T14:48:44.555323",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],

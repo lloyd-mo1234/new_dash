@@ -34,21 +34,11 @@ class XCSwapPosition:
     def create_xc_swaps(self):
         """Create multiple XC StandardSwap objects for complex expressions"""
         try:
-            print(f"🔧 Creating XC swaps for complex position: {self.handle}")
-            print(f"   Instrument: {self.instrument}")
-            print(f"   Spread Price: {self.price}")
-            print(f"   Size: {self.size}m")
-            
             # Parse the complex expression into components
             self.components = parse_complex_expression(self.instrument)
             
             if not self.components:
-                print(f"❌ No components found for instrument: {self.instrument}")
-                return False
-            
-            print(f"🔍 Found {len(self.components)} components:")
-            for i, comp in enumerate(self.components):
-                print(f"   {i+1}. {comp['instrument']} (coeff: {comp['coefficient']})")
+                return False             
             
             # ALWAYS recalculate component rates based on current price
             # This ensures that when price is updated, the rates are recalculated correctly
@@ -63,18 +53,18 @@ class XCSwapPosition:
                 # Get the rate for this component
                 component_rate = self.component_rates.get(comp['instrument'], 3.0)  # Default 3.0%
                 
-                print(f"🔧 Creating component {i+1}: {comp['instrument']}")
-                print(f"   Handle: {component_handle}")
-                print(f"   Template: {comp['template']}")
-                print(f"   Rate: {component_rate:.3f}%")
-                print(f"   Start: {comp['start_date']}")
-                print(f"   End: {comp['end_date']}")
+                
+                
+                
+                
+                
+                
                 
                 # Step 1: Create temporary swap with 1 million notional to calculate DV01
                 temp_handle = f"{component_handle}_temp_dv01"
                 
                 try:
-                    print(f"🔧 Step 1: Creating temporary swap for DV01 calculation...")
+                    
                     xc.StandardSwap(
                         product_handle=temp_handle,
                         template_name=comp['template'],
@@ -93,11 +83,11 @@ class XCSwapPosition:
                     today_yymmdd = datetime.now().strftime("%y%m%d")
                     curve_handle = f"{today_yymmdd}_core_bundle"
                     
-                    print(f"🔧 Step 2: Calculating DV01 for {temp_handle} using curve {curve_handle}...")
+                    
                     dv01_per_million = xc.DV01(curve_handle, temp_handle)
                     dv01_per_million = float(dv01_per_million)
                     
-                    print(f"📊 DV01 per million for {comp['instrument']}: ${dv01_per_million:,.2f}")
+                    
                     
                     # Step 3: Calculate target DV01 based on size input
                     # Size input (e.g., 500) means we want DV01 = 500 * 1000 = 500,000
@@ -108,19 +98,19 @@ class XCSwapPosition:
                     
                     # Note: No longer distinguishing between entry/exit - all positions use same sign
                     
-                    print(f"🎯 Target DV01 for this component: ${target_dv01_with_coeff:,.0f}")
+                    
                     
                     # Step 4: Calculate required notional to achieve target DV01
                     if abs(dv01_per_million) > 0.01:  # Avoid division by very small numbers
                         required_notional = (target_dv01_with_coeff / dv01_per_million) * 1_000_000
                     else:
-                        print(f"⚠️ DV01 per million too small ({dv01_per_million}), using fallback notional")
+                        
                         required_notional = target_dv01_with_coeff * 1000  # Fallback
                     
-                    print(f"🔧 Required notional: ${required_notional:,.0f}")
+                    
                     
                     # Create the actual swap with calculated notional
-                    print(f"🔧 Step 5: Creating final swap with calculated notional...")
+                    
                     xc.StandardSwap(
                         product_handle=component_handle,
                         template_name=comp['template'],
@@ -145,25 +135,25 @@ class XCSwapPosition:
                         'target_dv01': target_dv01_with_coeff
                     })
                     
-                    print(f"✅ SWAP POSITION CREATED: {component_handle}")
-                    print(f"   Final notional: ${required_notional:,.0f}")
-                    print(f"   Expected DV01: ${target_dv01_with_coeff:,.0f}")
-                    print(f"   ✅ SWAP POSITION ADDED TO self.xc_swaps (total count: {len(self.xc_swaps)})")
+                    
+                    
+                    
+                    
                     
                 except Exception as e:
-                    print(f"❌ Error creating component {component_handle}: {e}")
+                    
                     return False
             
             self.xc_created = True
-            print(f"🎉 POSITION CREATION COMPLETE: {self.handle}")
-            print(f"   Total XC swaps created: {len(self.xc_swaps)}")
-            print(f"   self.xc_created = {self.xc_created}")
-            print(f"   Position ready for PnL calculation")
+            
+            
+            
+            
             return True
             
         except Exception as e:
-            print(f"❌ Error creating XC swaps for {self.handle}: {e}")
-            print(f"❌ Full error details: {type(e).__name__}: {str(e)}")
+            
+            
             self.xc_created = False
             return False
     
@@ -177,14 +167,14 @@ class XCSwapPosition:
         Returns:
             dict with single PnL value
         """
-        print(f"🔍 calculate_pnl called for position: {self.handle}")
-        print(f"   self.xc_created = {self.xc_created}")
-        print(f"   len(self.xc_swaps) = {len(self.xc_swaps)}")
+        
+        
+        
         
         if not self.xc_created or not self.xc_swaps:
             error_msg = f"XC swaps for {self.handle} not created, cannot calculate P&L"
-            print(f"⚠️ {error_msg}")
-            print(f"   ❌ RETURNING ZERO PNL - No XC swaps exist")
+            
+            
             return {'pnl': 0.0, 'error': error_msg}
         
         # Generate today's curve bundle name if not provided
@@ -193,7 +183,7 @@ class XCSwapPosition:
             curve_handle = f"{today_yymmdd}_core_bundle"
             
         try:
-            print(f"🔍 Calculating P&L for complex position {self.handle} using curve: {curve_handle}")
+            
             
             total_pnl = 0.0
             component_pnls = []
@@ -213,10 +203,10 @@ class XCSwapPosition:
                         'coefficient': swap_info['coefficient']
                     })
                     
-                    print(f"   Component {swap_info['instrument']}: ${pnl_value:,.2f}")
+                    
                     
                 except Exception as e:
-                    print(f"❌ Error calculating P&L for component {swap_handle}: {e}")
+                    
                     component_pnls.append({
                         'handle': swap_handle,
                         'instrument': swap_info['instrument'],
@@ -225,7 +215,7 @@ class XCSwapPosition:
                     })
             
             self.last_pnl = total_pnl
-            print(f"✅ Total P&L for {self.handle}: ${total_pnl:,.2f}")
+            
             
             return {
                 'pnl': total_pnl, 
@@ -235,7 +225,7 @@ class XCSwapPosition:
             
         except Exception as e:
             error_msg = f"xc.PresentValue error for {self.handle}: {str(e)}"
-            print(f"❌ {error_msg}")
+            
             return {'pnl': 0.0, 'error': error_msg}
     
     def calculate_array_pnl(self):
@@ -249,7 +239,7 @@ class XCSwapPosition:
         """
         if not self.xc_created or not self.xc_swaps:
             error_msg = f"XC swaps for {self.handle} not created, cannot calculate P&L"
-            print(f"⚠️ {error_msg}")
+            
             return {'pnl_array': [], 'error': error_msg}
         
         try:
@@ -268,8 +258,8 @@ class XCSwapPosition:
             end_dt_converted = datetime.now()
             end_date = end_dt_converted.strftime('%y%m%d')
             
-            print(f"📊 Calculating PnL array from {start_date} to {end_date}")
-            print(f"   Insertion date: {self.insertion_date}")
+            
+            
             
             # Get all available dates from loader
             all_dates = get_available_dates()
@@ -284,7 +274,7 @@ class XCSwapPosition:
                 if start_dt <= date_dt <= end_dt:
                     filtered_dates.append(date_str)
             
-            print(f"📅 Found {len(filtered_dates)} dates in range")
+            
             
             if not filtered_dates:
                 return {
@@ -301,7 +291,7 @@ class XCSwapPosition:
                 bundle_name = get_bundle_name(date_str)
                 
                 if not bundle_name:
-                    print(f"⚠️ No bundle found for date {date_str}")
+                    
                     continue
                 
                 # Calculate total PnL for this date
@@ -315,15 +305,15 @@ class XCSwapPosition:
                         pnl_value = float(pnl)
                         total_pnl += pnl_value
                     except Exception as e:
-                        print(f"⚠️ Error calculating PnL for {swap_handle} on {date_str}: {e}")
+                        
                         continue
                 
                 # Convert date to datetime for output
                 date_dt = yymmdd_to_datetime(date_str)
                 pnl_array.append((date_dt, total_pnl))
-                print(f"   {date_dt.strftime('%Y-%m-%d')}: ${total_pnl:,.2f}")
+                
             
-            print(f"✅ Calculated PnL for {len(pnl_array)} dates")
+            
             
             return {
                 'pnl_array': pnl_array,
@@ -335,7 +325,7 @@ class XCSwapPosition:
             
         except Exception as e:
             error_msg = f"Error calculating PnL array: {str(e)}"
-            print(f"❌ {error_msg}")
+            
             return {
                 'pnl_array': [],
                 'error': error_msg
@@ -367,50 +357,45 @@ class XCFuturesPosition:
     def build_futures_expression(self, futures_tick_data: pd.DataFrame = None):
         """Build the futures expression by parsing components and getting prices"""
         try:
-            print(f"🔧 Building futures expression for position: {self.handle}")
-            print(f"   Instrument: {self.instrument}")
-            print(f"   Entry Price (spread): {self.price}")
-            print(f"   Size: {self.size}")
+            
+            
+            
+            
             
             # Parse the instrument expression if not already done
             if not self.components:
                 self.components = parse_futures_expression(self.instrument)
                 if not self.components:
-                    print(f"❌ Could not parse futures expression: {self.instrument}")
+                    
                     return False
-            
-            print(f"🔍 Found {len(self.components)} components:")
-            for i, comp in enumerate(self.components):
-                print(f"   {i+1}. {comp['instrument']} (coeff: {comp['coefficient']})")
-            
             # Get futures tick data if not provided
             if futures_tick_data is None or futures_tick_data.empty:
                 # Extract unique instrument names from components
                 unique_instruments = list(set([comp['instrument'] for comp in self.components]))
-                print(f"📊 Getting futures data for: {unique_instruments}")
+                
                 
                 futures_tick_data = get_futures_details(unique_instruments)
                 
                 if futures_tick_data is None or futures_tick_data.empty:
-                    print(f"❌ No futures tick data available")
+                    
                     return False
             
             # CRITICAL FIX: Always recalculate component prices using self.price
             # This ensures the spread price from the modal is used correctly
-            print(f"🔧 Calculating component prices using spread price: {self.price}")
+            
             self.component_rates = solve_futures_component_prices(
                 self.components, 
                 self.price, 
                 futures_tick_data
             )
-            print(f"✅ Component prices calculated: {self.component_rates}")
+            
             
             self.futures_built = True
-            print(f"✅ Futures expression built successfully for {self.handle}")
+            
             return True
             
         except Exception as e:
-            print(f"❌ Error building futures expression for {self.handle}: {e}")
+            
             self.futures_built = False
             return False
         
@@ -425,16 +410,16 @@ class XCFuturesPosition:
             dict with single PnL value
         """
         try:
-            print(f"🔍 Calculating futures P&L for {self.handle}")
-            print(f"   Instrument: {self.instrument}")
-            print(f"   Entry Price: {self.price}")
-            print(f"   Size: {self.size} lots")
+            
+            
+            
+            
             
             # Build the futures expression if not already built
             if not self.futures_built:
                 if not self.build_futures_expression(futures_tick_data):
                     error_msg = f"Failed to build futures expression for {self.instrument}"
-                    print(f"❌ {error_msg}")
+                    
                     return {'pnl': 0.0, 'error': error_msg}
             
             if futures_tick_data is None or futures_tick_data.empty:
@@ -444,16 +429,12 @@ class XCFuturesPosition:
                 
                 if futures_tick_data is None or futures_tick_data.empty:
                     error_msg = f"No futures tick data available for {self.instrument}"
-                    print(f"❌ {error_msg}")
+                    
                     return {'pnl': 0.0, 'error': error_msg}
             
             # Determine if we have individual component sizes
             has_individual_sizes = isinstance(self.size, list) and len(self.size) == len(self.components)
-            
-            if has_individual_sizes:
-                print(f"   Using individual component sizes: {self.size}")
-            else:
-                print(f"   Using uniform size for all components: {self.size}")
+                           
             
             # Calculate P&L for each component and sum them up
             total_pnl = 0.0
@@ -472,7 +453,7 @@ class XCFuturesPosition:
                 # Check if instrument exists in the tick data
                 if instrument not in futures_tick_data.index:
                     error_msg = f"Instrument {instrument} not found in futures tick data"
-                    print(f"❌ {error_msg}")
+                    
                     component_pnls.append({
                         'instrument': instrument,
                         'pnl': 0.0,
@@ -489,23 +470,23 @@ class XCFuturesPosition:
                 # Get the component price
                 component_price = self.component_rates.get(instrument, px_mid)
                 
-                print(f"📊 Component {instrument}:")
-                print(f"   Coefficient: {coefficient}")
-                print(f"   Size: {component_size} lots")
-                print(f"   Tick Size: {fut_tick_size}")
-                print(f"   Tick Value: ${fut_tick_val}")
-                print(f"   Entry Price: {component_price}")
-                print(f"   PX Mid: {px_mid}")
+                
+                
+                
+                
+                
+                
+                
                 
                 # Calculate P&L for this component: (entry_price - px_mid) / tick_size * tick_value * size * coefficient
                 price_diff = component_price - px_mid
                 tick_count = price_diff / fut_tick_size
                 component_pnl = tick_count * fut_tick_val * component_size * coefficient
                 
-                print(f"🧮 Component P&L calculation:")
-                print(f"   Price difference: {price_diff}")
-                print(f"   Tick count: {tick_count}")
-                print(f"   Component P&L: ${component_pnl:,.2f}")
+                
+                
+                
+                
                 
                 total_pnl += component_pnl
                 
@@ -522,7 +503,7 @@ class XCFuturesPosition:
             
             self.last_pnl = total_pnl
             
-            print(f"✅ Total P&L for {self.handle}: ${total_pnl:,.2f}")
+            
             
             return {
                 'pnl': total_pnl,
@@ -537,7 +518,7 @@ class XCFuturesPosition:
             
         except Exception as e:
             error_msg = f"Error calculating futures P&L for {self.handle}: {str(e)}"
-            print(f"❌ {error_msg}")
+            
             return {'pnl': 0.0, 'error': error_msg}
     
     def calculate_array_pnl(self, futures_tick_data: pd.DataFrame, historical_prices: pd.DataFrame) -> Dict[str, Any]:
@@ -555,7 +536,7 @@ class XCFuturesPosition:
         """
         if not self.futures_built:
             error_msg = f"Futures expression for {self.handle} not built, cannot calculate P&L"
-            print(f"⚠️ {error_msg}")
+            
             return {'pnl_array': [], 'error': error_msg}
         
         try:
@@ -569,24 +550,24 @@ class XCFuturesPosition:
             # End date is today (as date, not datetime)
             end_date = datetime.now().date()
             
-            print(f"📊 Calculating futures PnL array from {start_date} to {end_date}")
-            print(f"   Insertion date: {self.insertion_date}")
+            
+            
             
             # Build the futures expression if not already built
             if not self.futures_built:
                 if not self.build_futures_expression(futures_tick_data):
                     error_msg = f"Failed to build futures expression for {self.instrument}"
-                    print(f"❌ {error_msg}")
+                    
                     return {'pnl_array': [], 'error': error_msg}
             
             if futures_tick_data is None or futures_tick_data.empty:
                 error_msg = "No futures tick data provided for tick size/value information"
-                print(f"❌ {error_msg}")
+                
                 return {'pnl_array': [], 'error': error_msg}
             
             if historical_prices is None or historical_prices.empty:
                 error_msg = "No historical prices DataFrame provided"
-                print(f"❌ {error_msg}")
+                
                 return {'pnl_array': [], 'error': error_msg}
             
             # Filter dates that fall within our range (inclusive)
@@ -596,10 +577,10 @@ class XCFuturesPosition:
             
             if filtered_prices.empty:
                 error_msg = f"No prices found between {start_date} and {end_date}"
-                print(f"❌ {error_msg}")
+                
                 return {'pnl_array': [], 'error': error_msg}
             
-            print(f"📅 Found {len(filtered_prices)} dates with price data")
+            
             
             # Determine if we have individual component sizes
             has_individual_sizes = isinstance(self.size, list) and len(self.size) == len(self.components)
@@ -623,12 +604,12 @@ class XCFuturesPosition:
                     
                     # Check if instrument exists in tick data (for tick size/value)
                     if instrument not in futures_tick_data.index:
-                        print(f"⚠️ Instrument {instrument} not found in tick data, skipping")
+                        
                         continue
                     
                     # Check if instrument exists in historical prices
                     if instrument not in filtered_prices.columns:
-                        print(f"⚠️ Instrument {instrument} not found in historical prices, skipping")
+                        
                         continue
                     
                     # Get futures contract details (tick size/value from tick data)
@@ -641,7 +622,7 @@ class XCFuturesPosition:
                     
                     # Skip if price is NaN
                     if pd.isna(px_mid):
-                        print(f"⚠️ No price for {instrument} on {date}, skipping")
+                        
                         continue
                     
                     # Get the entry price for this component
@@ -657,10 +638,9 @@ class XCFuturesPosition:
                 # Add this date's PnL to the array
                 pnl_array.append((date, total_pnl))
                 
-                if date_idx < 5 or date_idx >= len(filtered_prices) - 2:  # Log first 5 and last 2
-                    print(f"   {date.strftime('%Y-%m-%d')}: ${total_pnl:,.2f}")
+                    
             
-            print(f"✅ Calculated PnL for {len(pnl_array)} dates")
+            
             
             return {
                 'pnl_array': pnl_array,
@@ -672,7 +652,7 @@ class XCFuturesPosition:
             
         except Exception as e:
             error_msg = f"Error calculating futures PnL array: {str(e)}"
-            print(f"❌ {error_msg}")
+            
             import traceback
             traceback.print_exc()
             return {
@@ -772,30 +752,30 @@ class Trade:
         
         # Get instrument details and typology
         if not self.instrument_details or not self.typology:
-            print(f"⚠️ No instrument details or typology for trade {self.trade_id}")
+            
             return False
             
         trade_type = self.typology[0].lower() if self.typology else 'swap'
         
-        print(f"🔄 Creating positions for trade {self.trade_id}")
-        print(f"   Trade Type: {trade_type}")
-        print(f"   Secondary Type: {self.secondary_typology}")
+        
+        
+        
         
         # Handle EFP trades
         if trade_type == 'efp':
-            print(f"🔧 Creating EFP trade positions")
+            
             
             # Create primary positions (swap leg)
             if self.instrument_details:
                 instrument = self.instrument_details[0]
-                print(f"   Primary (Swap) Instrument: {instrument}")
+                
                 
                 for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
                     handle = f"{self.trade_id}_swap_position_{i}"
                     
-                    print(f"🔧 Creating swap position {i}: {handle}")
-                    print(f"   Price: {price}")
-                    print(f"   Size (PV01): {size}")
+                    
+                    
+                    
                     
                     # Get insertion date for this position
                     insertion_date = None
@@ -812,21 +792,19 @@ class Trade:
                     
                     if position.create_xc_swaps():
                         self.positions.append(position)
-                        print(f"✅ Swap position {i} created with {len(position.xc_swaps)} component swaps")
-                    else:
-                        print(f"❌ Failed to create swap position {i}")
+                                                
             
             # Create secondary positions (futures leg)
             if self.instrument_details_secondary and self.secondary_typology in ['futures', 'future']:
                 instrument = self.instrument_details_secondary[0]
-                print(f"   Secondary (Futures) Instrument: {instrument}")
+                
                 
                 for i, (price, size) in enumerate(zip(self.prices_secondary, self.sizes_secondary)):
                     handle = f"{self.trade_id}_futures_position_{i}"
                     
-                    print(f"🔧 Creating futures position {i}: {handle}")
-                    print(f"   Price: {price}")
-                    print(f"   Size: {size}")
+                    
+                    
+                    
                     
                     # Get insertion date for this position
                     insertion_date = None
@@ -843,30 +821,29 @@ class Trade:
                     
                     if position.build_futures_expression():
                         self.positions_secondary.append(position)
-                        print(f"✅ Futures position {i} created with {len(position.components)} components")
-                    else:
-                        print(f"❌ Failed to build futures position {i}")
+                        
+                        
             
-            print(f"✅ EFP trade: Created {len(self.positions)} swap positions and {len(self.positions_secondary)} futures positions")
+            
             return True
         
         # Handle standard swap trades
         elif trade_type == 'swap':
             instrument = self.instrument_details[0]
-            print(f"   Instrument: {instrument}")
+            
             
             for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
                 handle = f"{self.trade_id}_position_{i}"
                 
-                print(f"🔧 Creating position {i}: {handle}")
-                print(f"   Price: {price}")
-                print(f"   Size: {size}")
+                
+                
+                
                 
                 # Get insertion date for this position
                 insertion_date = None
                 if hasattr(self, 'primary_pos_insertion_dt') and i < len(self.primary_pos_insertion_dt):
                     insertion_date = self.primary_pos_insertion_dt[i]
-                    print(f"   Insertion date: {insertion_date}")
+                    
                 
                 position = XCSwapPosition(
                     handle=handle,
@@ -878,27 +855,26 @@ class Trade:
                 
                 if position.create_xc_swaps():
                     self.positions.append(position)
-                    print(f"✅ Swap position {i} created with {len(position.xc_swaps)} component swaps")
-                else:
-                    print(f"❌ Failed to create swap position {i}")
+                    
+                    
         
         # Handle standard futures trades
         elif trade_type == 'future':
             instrument = self.instrument_details[0]
-            print(f"   Instrument: {instrument}")
+            
             
             for i, (price, size) in enumerate(zip(self.prices, self.sizes)):
                 handle = f"{self.trade_id}_position_{i}"
                 
-                print(f"🔧 Creating position {i}: {handle}")
-                print(f"   Price: {price}")
-                print(f"   Size: {size}")
+                
+                
+                
                 
                 # Get insertion date for this position
                 insertion_date = None
                 if hasattr(self, 'primary_pos_insertion_dt') and i < len(self.primary_pos_insertion_dt):
                     insertion_date = self.primary_pos_insertion_dt[i]
-                    print(f"   Insertion date: {insertion_date}")
+                    
                 
                 position = XCFuturesPosition(
                     handle=handle,
@@ -910,18 +886,14 @@ class Trade:
                 
                 if position.build_futures_expression():
                     self.positions.append(position)
-                    print(f"✅ Futures position {i} created with {len(position.components)} components")
-                else:
-                    print(f"❌ Failed to build futures position {i}")
-        
+                    
         else:
-            print(f"⚠️ Unsupported trade type: {trade_type}")
             return False
         
-        print(f"✅ Created {len(self.positions)} primary positions for trade {self.trade_id}")
+        
         
         # Calculate and store PnL arrays for all positions
-        print(f"📊 Calculating PnL arrays for trade {self.trade_id}...")
+        
         try:
             array_pnl_result = self.calculate_array_pnl(
                 futures_tick_data=futures_tick_data,
@@ -929,24 +901,33 @@ class Trade:
             )
             
             if array_pnl_result.get('error'):
-                print(f"⚠️ Error calculating PnL arrays: {array_pnl_result['error']}")
+                pass
             else:
                 # Store the PnL arrays in the trade object
                 self.pnl_array = array_pnl_result.get('pnl_array', [])
                 self.pnl_array_primary = array_pnl_result.get('primary_pnl_array', [])
                 self.pnl_array_secondary = array_pnl_result.get('secondary_pnl_array', [])
                 
-                print(f"✅ Stored PnL arrays for {len(self.pnl_array)} dates")
-                print(f"   - Total PnL array: {len(self.pnl_array)} dates")
-                print(f"   - Primary PnL array: {len(self.pnl_array_primary)} dates")
-                print(f"   - Secondary PnL array: {len(self.pnl_array_secondary)} dates")
+                
+                
+                
+                
                 
         except Exception as e:
-            print(f"❌ Error calculating PnL arrays: {e}")
+            
             # Initialize empty arrays on error
             self.pnl_array = []
             self.pnl_array_primary = []
             self.pnl_array_secondary = []
+        
+        # Print PnL arrays to console
+        print(f"\n{'='*80}")
+        print(f"Trade: {self.trade_id}")
+        print(f"{'='*80}")
+        print(f"self.pnl_array = {self.pnl_array}")
+        print(f"self.pnl_array_primary = {self.pnl_array_primary}")
+        print(f"self.pnl_array_secondary = {self.pnl_array_secondary}")
+        print(f"{'='*80}\n")
         
         return True
     
@@ -1053,11 +1034,11 @@ class Trade:
             - secondary_pnl_array: List of (date, pnl) tuples for secondary positions only
         """
         try:
-            print(f"📊 Calculating array P&L for trade: {self.trade_id}")
+            
             
             if not self.positions and not self.positions_secondary:
                 error_msg = f"No positions created for trade {self.trade_id}"
-                print(f"⚠️ {error_msg}")
+                
                 return {
                     'pnl_array': [],
                     'primary_pnl_array': [],
@@ -1078,17 +1059,17 @@ class Trade:
                     # Call futures position calculate_array_pnl (needs tick data and historical prices)
                     result = position.calculate_array_pnl(futures_tick_data, historical_prices)
                 else:
-                    print(f"⚠️ Unknown position type: {type(position)}")
+                    
                     continue
                 
                 if result.get('error'):
-                    print(f"⚠️ Error in position {position.handle}: {result['error']}")
+                    
                     continue
                 
                 # Convert array list to dictionary for easier intersection
                 pnl_dict = {date: pnl for date, pnl in result['pnl_array']}
                 primary_position_pnls.append(pnl_dict)
-                print(f"✅ Got {len(pnl_dict)} dates from primary position {position.handle}")
+                
             
             # Collect PnL arrays from secondary positions (futures for EFP)
             for position in self.positions_secondary:
@@ -1099,24 +1080,24 @@ class Trade:
                     # Call swap position calculate_array_pnl
                     result = position.calculate_array_pnl()
                 else:
-                    print(f"⚠️ Unknown secondary position type: {type(position)}")
+                    
                     continue
                 
                 if result.get('error'):
-                    print(f"⚠️ Error in secondary position {position.handle}: {result['error']}")
+                    
                     continue
                 
                 # Convert array list to dictionary
                 pnl_dict = {date: pnl for date, pnl in result['pnl_array']}
                 secondary_position_pnls.append(pnl_dict)
-                print(f"✅ Got {len(pnl_dict)} dates from secondary position {position.handle}")
+                
             
             # Find UNION of dates across ALL positions (primary and secondary)
             all_position_pnls = primary_position_pnls + secondary_position_pnls
             
             if not all_position_pnls:
                 error_msg = f"No valid P&L arrays from any positions for trade {self.trade_id}"
-                print(f"⚠️ {error_msg}")
+                
                 return {
                     'pnl_array': [],
                     'primary_pnl_array': [],
@@ -1131,11 +1112,11 @@ class Trade:
             for pnl_dict in all_position_pnls:
                 all_dates = all_dates.union(set(pnl_dict.keys()))
             
-            print(f"📅 Found {len(all_dates)} total dates across all positions (union)")
+            
             
             if not all_dates:
                 error_msg = f"No dates found in any positions for trade {self.trade_id}"
-                print(f"⚠️ {error_msg}")
+                
                 return {
                     'pnl_array': [],
                     'primary_pnl_array': [],
@@ -1164,15 +1145,7 @@ class Trade:
                 pnl_array.append((date, total_pnl))
                 primary_pnl_array.append((date, primary_pnl))
                 secondary_pnl_array.append((date, secondary_pnl))
-            
-            # Log first few and last few entries
-            print(f"📊 Combined P&L array for trade {self.trade_id}:")
-            for i, (date, pnl) in enumerate(pnl_array):
-                if i < 3 or i >= len(pnl_array) - 2:
-                    print(f"   {date.strftime('%Y-%m-%d')}: ${pnl:,.2f}")
-            
-            print(f"✅ Calculated array P&L for {len(pnl_array)} dates")
-            
+                                       
             return {
                 'pnl_array': pnl_array,
                 'primary_pnl_array': primary_pnl_array,
@@ -1185,7 +1158,7 @@ class Trade:
             
         except Exception as e:
             error_msg = f"Error calculating array P&L for trade {self.trade_id}: {str(e)}"
-            print(f"❌ {error_msg}")
+            
             import traceback
             traceback.print_exc()
             return {
@@ -1228,60 +1201,54 @@ class Portfolio:
     
     def save_to_file(self):
         """Save portfolio to JSON file"""
-        try:
-            data = {
-                'portfolio_metadata': {
-                    'last_pnl_update': getattr(self, 'last_pnl_update', None),
-                    'total_portfolio_pnl': getattr(self, 'total_portfolio_pnl', 0.0)
-                },
-                'trades': {}
+        data = {
+            'portfolio_metadata': {
+                'last_pnl_update': getattr(self, 'last_pnl_update', None),
+                'total_portfolio_pnl': getattr(self, 'total_portfolio_pnl', 0.0)
+            },
+            'trades': {}
+        }
+        
+        for trade_id, trade in self.trades.items():
+            # Determine secondary_typology: 'futures' for EFP trades, None otherwise
+            secondary_typology = trade.secondary_typology
+            if not secondary_typology and trade.typology and 'efp' in [t.lower() for t in trade.typology]:
+                secondary_typology = 'futures'
+            
+            trade_data = {
+                'trade_id': trade.trade_id,
+                'typology': trade.typology,
+                'secondary_typology': secondary_typology,
+                'group_id': getattr(trade, 'group_id', None),
+                'prices': trade.prices,
+                'sizes': trade.sizes,
+                'instrument_details': trade.instrument_details,
+                'stored_pnl': getattr(trade, 'stored_pnl', 0.0),
+                'pnl_timestamp': getattr(trade, 'pnl_timestamp', None),
+                # Always include secondary attributes (empty lists if not present)
+                'prices_secondary': getattr(trade, 'prices_secondary', []),
+                'sizes_secondary': getattr(trade, 'sizes_secondary', []),
+                'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', []),
+                # Include separate P&L values for EFP trades
+                'stored_pnl_primary': getattr(trade, 'stored_pnl_primary', None),
+                'stored_pnl_secondary': getattr(trade, 'stored_pnl_secondary', None),
+                # Include insertion date arrays
+                'primary_pos_insertion_dt': getattr(trade, 'primary_pos_insertion_dt', []),
+                'secondary_pos_insertion_dt': getattr(trade, 'secondary_pos_insertion_dt', [])
             }
             
-            for trade_id, trade in self.trades.items():
-                # Determine secondary_typology: 'futures' for EFP trades, None otherwise
-                secondary_typology = trade.secondary_typology
-                if not secondary_typology and trade.typology and 'efp' in [t.lower() for t in trade.typology]:
-                    secondary_typology = 'futures'
-                
-                trade_data = {
-                    'trade_id': trade.trade_id,
-                    'typology': trade.typology,
-                    'secondary_typology': secondary_typology,
-                    'group_id': getattr(trade, 'group_id', None),
-                    'prices': trade.prices,
-                    'sizes': trade.sizes,
-                    'instrument_details': trade.instrument_details,
-                    'stored_pnl': getattr(trade, 'stored_pnl', 0.0),
-                    'pnl_timestamp': getattr(trade, 'pnl_timestamp', None),
-                    # Always include secondary attributes (empty lists if not present)
-                    'prices_secondary': getattr(trade, 'prices_secondary', []),
-                    'sizes_secondary': getattr(trade, 'sizes_secondary', []),
-                    'instrument_details_secondary': getattr(trade, 'instrument_details_secondary', []),
-                    # Include separate P&L values for EFP trades
-                    'stored_pnl_primary': getattr(trade, 'stored_pnl_primary', None),
-                    'stored_pnl_secondary': getattr(trade, 'stored_pnl_secondary', None),
-                    # Include insertion date arrays
-                    'primary_pos_insertion_dt': getattr(trade, 'primary_pos_insertion_dt', []),
-                    'secondary_pos_insertion_dt': getattr(trade, 'secondary_pos_insertion_dt', [])
-                }
-                
-                # 🐛 DEBUG: Log insertion dates being saved to JSON
-                primary_dates = getattr(trade, 'primary_pos_insertion_dt', [])
-                secondary_dates = getattr(trade, 'secondary_pos_insertion_dt', [])
-                print(f'🐛 DEBUG [save_to_file] - Saving insertion dates for trade {trade_id}:')
-                print(f'   - primary_pos_insertion_dt: {primary_dates}')
-                print(f'   - secondary_pos_insertion_dt: {secondary_dates}')
-                
-                data['trades'][trade_id] = trade_data
+            # 🐛 DEBUG: Log insertion dates being saved to JSON
+            primary_dates = getattr(trade, 'primary_pos_insertion_dt', [])
+            secondary_dates = getattr(trade, 'secondary_pos_insertion_dt', [])
             
-            with open(self.storage_file, 'w') as f:
-                json.dump(data, f, indent=2)
-                
-            print(f"💾 Portfolio saved to {self.storage_file}")
             
-        except Exception as e:
-            print(f"❌ Error saving portfolio: {e}")
-    
+            
+            
+            data['trades'][trade_id] = trade_data
+        
+        with open(self.storage_file, 'w') as f:
+            json.dump(data, f, indent=2)
+                
     def load_from_file(self):
         """Load portfolio from JSON file"""
         try:
@@ -1347,31 +1314,20 @@ class Portfolio:
                     trade.primary_pos_insertion_dt = trade_data.get('primary_pos_insertion_dt', [])
                     trade.secondary_pos_insertion_dt = trade_data.get('secondary_pos_insertion_dt', [])
                     
-                    self.trades[trade.trade_id] = trade
-                
-                print(f"📂 Portfolio loaded from {self.storage_file} ({len(self.trades)} trades)")
-                if self.last_pnl_update:
-                    print(f"📊 Last P&L update: {self.last_pnl_update}")
-                
-                # DON'T automatically initialize XC positions on load anymore
-                # They will be created only when "Load Real Time Data + P&L" is clicked
-                
-            else:
-                print(f"📂 No existing portfolio file found, starting fresh")
-                
+                    self.trades[trade.trade_id] = trade                
+                     
         except Exception as e:
-            print(f"❌ Error loading portfolio: {e}")
             self.trades = {}  # Start with empty portfolio if loading fails
     
     def initialize_positions(self):
         """Initialize positions for all trades in the portfolio using new position system"""
-        print("🔄 Initializing positions for all trades...")
+        
         
         # Get futures tick data if we have futures trades and it's not already loaded
         if self.futures_tick_data is None:
             futures_instruments = get_futures_instrument_names(self)
             if futures_instruments:
-                print("📊 Getting futures tick data for portfolio...")
+                
                 self.futures_tick_data = get_futures_details(futures_instruments)
         
         # Get historical prices for futures if needed
@@ -1383,7 +1339,7 @@ class Portfolio:
         successful_trades = 0
         
         for trade_id, trade in self.trades.items():
-            print(f"🔄 Creating positions for trade: {trade_id}")
+            
             
             # Pass futures_tick_data and historical_prices to create_positions
             if trade.create_positions(
@@ -1392,11 +1348,10 @@ class Portfolio:
             ):
                 successful_trades += 1
                 total_positions += len(trade.positions) + len(trade.positions_secondary)
-                print(f"✅ Trade {trade_id}: {len(trade.positions)} primary + {len(trade.positions_secondary)} secondary positions")
-            else:
-                print(f"❌ Failed to create positions for trade {trade_id}")
+                
+                
         
-        print(f"🎯 Position Initialization Complete: {successful_trades}/{len(self.trades)} trades, {total_positions} total positions")
+        
         return successful_trades, total_positions
 
     def calculate_portfolio_pnl_xc(self, curve_handle: str = None, futures_tick_data: pd.DataFrame = None) -> Dict[str, Any]:
@@ -1405,7 +1360,7 @@ class Portfolio:
         Saves PnL of each trade to JSON and returns PnL information
         """
         try:
-            print("🔄 Starting combined portfolio P&L calculation...")
+            
             
             # Generate today's curve bundle name if not provided
             if curve_handle is None:
@@ -1416,7 +1371,7 @@ class Portfolio:
             if futures_tick_data is None:
                 futures_instruments = get_futures_instrument_names(self)
                 if futures_instruments:
-                    print("📊 Getting futures tick data...")
+                    
                     futures_tick_data = get_futures_details(futures_instruments)
                 else:
                     futures_tick_data = pd.DataFrame()
@@ -1426,7 +1381,7 @@ class Portfolio:
             current_timestamp = datetime.now().isoformat()
             
             for trade_id, trade in self.trades.items():
-                print(f"🧮 Calculating P&L for trade: {trade_id}")
+                
                 
                 # Use trade.calculate_pnl() directly
                 pnl_result = trade.calculate_pnl(
@@ -1447,7 +1402,7 @@ class Portfolio:
                 if trade.typology and 'efp' in [t.lower() for t in trade.typology]:
                     trade.stored_pnl_primary = primary_pnl
                     trade.stored_pnl_secondary = secondary_pnl
-                    print(f"💰 EFP P&L breakdown - Primary (swap): ${primary_pnl:,.2f}, Secondary (futures): ${secondary_pnl:,.2f}")
+                    
                 
                 # Add to total
                 total_pnl += trade_pnl
@@ -1469,17 +1424,17 @@ class Portfolio:
                     'errors': pnl_result.get('errors', None)
                 }
                 
-                print(f"💰 Trade {trade_id} ({trade_type}): ${trade_pnl:,.2f}")
+                
             
             # Update portfolio-level metadata
             self.last_pnl_update = current_timestamp
             self.total_portfolio_pnl = total_pnl
             
             # Save to JSON file
-            print("💾 Saving P&L results to JSON...")
+            
             self.save_to_file()
             
-            print(f"✅ Portfolio P&L calculation complete: ${total_pnl:,.2f}")
+            
             
             return {
                 'success': True,
@@ -1494,7 +1449,7 @@ class Portfolio:
             
         except Exception as e:
             error_msg = f"Error in portfolio P&L calculation: {str(e)}"
-            print(f"❌ {error_msg}")
+            
             return {
                 'success': False,
                 'error': error_msg,
@@ -1522,12 +1477,12 @@ class Portfolio:
                 "method": "stored_from_json",
                 "timestamp": pnl_timestamp
             }
-            print(f"📊 Using stored P&L for {trade_id}: ${stored_pnl:,.2f} (timestamp: {pnl_timestamp})")
+            
         else:
             # Fallback to calculating P&L on-the-fly (without live price)
             pnl = trade.calculate_pnl()
             pnl["method"] = "calculated_on_demand"
-            print(f"🧮 Calculated P&L on-demand for {trade_id}: ${pnl.get('total_pnl', 0):,.2f}")
+            
         return {
             "trade_id": trade.trade_id,
             "typology": trade.typology,
@@ -1546,8 +1501,8 @@ class Portfolio:
         }
 
     def update_realtime_pnl(self) -> Dict[str, Any]:
-        print("🔄 Starting real-time P&L update...")
-        print("🔄 Reloading trade data from file to ensure latest instrument details...")
+        
+        
         self.load_from_file()
         
         # Clear any existing XC positions to force recreation with updated instrument details
@@ -1577,7 +1532,7 @@ class Portfolio:
                 trade.stored_pnl = trade_pnl
                 trade.pnl_timestamp = current_timestamp
                 total_portfolio_pnl += trade_pnl
-                print(f"💾 Stored P&L for {trade_id}: ${trade_pnl:,.2f}")
+                
             else:
                 trade.stored_pnl = 0.0
                 trade.pnl_timestamp = current_timestamp
@@ -1589,7 +1544,7 @@ class Portfolio:
         # Save to file
         self.save_to_file()
         
-        print(f"✅ Real-time P&L update complete: ${total_portfolio_pnl:,.2f} total")
+        
         
         return {
             'success': True,
@@ -1687,7 +1642,7 @@ def parse_instrument_dates(instrument: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        print(f"❌ Error parsing instrument dates for {instrument}: {e}")
+        
         return None
 
 def get_template_from_instrument(instrument: str) -> str:
@@ -1727,7 +1682,7 @@ def get_template_from_instrument(instrument: str) -> str:
         return template_map.get(currency, 'AUDIRS-SS')  # Default to AUD
         
     except Exception as e:
-        print(f"❌ Error getting template for {instrument}: {e}")
+        
         return 'AUDIRS-SS'  # Default fallback
 
 def parse_complex_expression(expression: str) -> List[Dict[str, Any]]:
@@ -1749,7 +1704,7 @@ def parse_complex_expression(expression: str) -> List[Dict[str, Any]]:
     """
     
     try:
-        print(f"🔍 Parsing expression: {expression}")
+        
         
         # Handle built-in structures first (butterfly, spreads)
         if '.' in expression and not any(op in expression for op in ['+', '-', '*', '/']):
@@ -1899,10 +1854,10 @@ def parse_complex_expression(expression: str) -> List[Dict[str, Any]]:
         instruments = re.findall(instrument_pattern, expression.lower())
         
         if not instruments:
-            print(f"❌ No instruments found in expression: {expression}")
+            
             return []
         
-        print(f"🔍 Found instruments: {instruments}")
+        
         
         # Parse the expression to extract coefficients
         components = []
@@ -1916,14 +1871,14 @@ def parse_complex_expression(expression: str) -> List[Dict[str, Any]]:
             instrument_positions[placeholder] = instrument
             temp_expr = temp_expr.replace(instrument, placeholder, 1)  # Replace only first occurrence
         
-        print(f"🔍 Expression with placeholders: {temp_expr}")
+        
         
         # Split by + and - while keeping the operators
         # This regex splits on + or - but keeps them in the result
         parts = re.split(r'(\+|\-)', temp_expr)
         parts = [part.strip() for part in parts if part.strip()]
         
-        print(f"🔍 Split parts: {parts}")
+        
         
         # Process each part to extract coefficient and instrument
         current_sign = 1  # Start with positive
@@ -1965,12 +1920,12 @@ def parse_complex_expression(expression: str) -> List[Dict[str, Any]]:
                         'template': get_template_from_instrument(instrument)
                     })
                     
-                    print(f"✅ Added component: {instrument} with coefficient {coefficient}")
+                    
         
         return components
         
     except Exception as e:
-        print(f"❌ Error parsing expression {expression}: {e}")
+        
         return []
 
 def solve_component_rates(components: List[Dict[str, Any]], spread_price: float) -> Dict[str, float]:
@@ -1993,7 +1948,7 @@ def solve_component_rates(components: List[Dict[str, Any]], spread_price: float)
         Dictionary mapping instrument -> rate to use for XC StandardSwap creation
     """
     try:
-        print(f"🔧 Solving component rates for spread price: {spread_price}")
+        
         
         # Get par rates for all components
         par_rates = {}
@@ -2002,14 +1957,14 @@ def solve_component_rates(components: List[Dict[str, Any]], spread_price: float)
             try:
                 df, error = get_swap_data(instrument)
                 if error or df is None or df.empty:
-                    print(f"⚠️ Could not get par rate for {instrument}, using default 3.0%")
+                    
                     par_rates[instrument] = 3.0  # Default fallback
                 else:
                     par_rate = df['Rate'].iloc[-1]  # Most recent rate
                     par_rates[instrument] = par_rate
-                    print(f"📊 Par rate for {instrument}: {par_rate:.3f}%")
+                    
             except Exception as e:
-                print(f"❌ Error getting par rate for {instrument}: {e}")
+                
                 par_rates[instrument] = 3.0  # Default fallback
         
         # Find the component with the largest absolute coefficient to solve for
@@ -2024,10 +1979,10 @@ def solve_component_rates(components: List[Dict[str, Any]], spread_price: float)
                 solve_for_instrument = comp['instrument']
         
         if not solve_for_instrument:
-            print("❌ No component found to solve for")
+            
             return par_rates
         
-        print(f"🎯 Solving for: {solve_for_instrument}")
+        
         
         # Calculate the sum of all other components
         other_sum = 0.0
@@ -2044,13 +1999,13 @@ def solve_component_rates(components: List[Dict[str, Any]], spread_price: float)
                 break
         
         if solve_coeff == 0:
-            print(f"❌ Cannot solve: coefficient for {solve_for_instrument} is zero")
+            
             return par_rates
         
         solved_rate = (spread_price - other_sum) / solve_coeff
         
-        print(f"🧮 Calculation: {solve_coeff} * rate = {spread_price} - {other_sum}")
-        print(f"✅ Solved rate for {solve_for_instrument}: {solved_rate:.3f}%")
+        
+        
         
         # Update the rates dictionary
         component_rates = par_rates.copy()
@@ -2058,12 +2013,12 @@ def solve_component_rates(components: List[Dict[str, Any]], spread_price: float)
         
         # Verify the calculation
         verification = sum(comp['coefficient'] * component_rates[comp['instrument']] for comp in components)
-        print(f"🔍 Verification: calculated spread = {verification:.3f}%, target = {spread_price:.3f}%")
+        
         
         return component_rates
         
     except Exception as e:
-        print(f"❌ Error solving component rates: {e}")
+        
         # Return par rates as fallback
         return {comp['instrument']: 3.0 for comp in components}
 
@@ -2079,7 +2034,7 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
         Dictionary with P&L results for swap trades only
     """
     try:
-        print("🔄 Calculating P&L for swap trades only...")
+        
         
         # Check if curves are loaded
         from loader import is_curves_loaded
@@ -2097,19 +2052,19 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
         for trade_id, trade in portfolio.trades.items():
             # Filter for swap trades only
             if not trade.typology or 'swap' not in [t.lower() for t in trade.typology]:
-                print(f"⏭️ Skipping non-swap trade: {trade_id} (typology: {trade.typology})")
+                
                 continue
                 
             swap_trades_processed += 1
-            print(f"🧮 Calculating P&L for swap trade: {trade_id}")
+            
             
             # Get the first instrument for P&L calculations
             if not trade.instrument_details or len(trade.instrument_details) == 0:
-                print(f"❌ No instrument details for trade {trade_id}")
+                
                 continue
                 
             instrument = trade.instrument_details[0]
-            print(f"📊 Using instrument: {instrument}")
+            
             
             trade_total_pnl = 0.0
             position_count = 0
@@ -2117,7 +2072,7 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
             # Calculate P&L for all entry positions
             for i, (price, size) in enumerate(zip(trade.entry_prices, trade.entry_sizes)):
                 if price and size:  # Only process non-zero positions
-                    print(f"🔧 Entry position {i}: price={price}, size={size}")
+                    
                     
                     try:
                         temp_handle = f"{trade_id}_entry_{i}_pnl_calc"
@@ -2137,17 +2092,17 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
                             position_pnl = pnl_result['pnl']
                             trade_total_pnl += position_pnl
                             position_count += 1
-                            print(f"   Entry position {i} P&L: ${position_pnl:,.2f}")
-                        else:
-                            print(f"   Failed to create XC swaps for entry position {i}")
+                            
+                            
                             
                     except Exception as e:
-                        print(f"   Error calculating entry position {i}: {e}")
+                        return e
+                        
             
             # Calculate P&L for all exit positions
             for i, (price, size) in enumerate(zip(trade.exit_prices, trade.exit_sizes)):
                 if price and size:  # Only process non-zero positions
-                    print(f"🔧 Exit position {i}: price={price}, size={size}")
+                    
                     
                     try:
                         temp_handle = f"{trade_id}_exit_{i}_pnl_calc"
@@ -2167,12 +2122,11 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
                             position_pnl = pnl_result['pnl']
                             trade_total_pnl += position_pnl
                             position_count += 1
-                            print(f"   Exit position {i} P&L: ${position_pnl:,.2f}")
-                        else:
-                            print(f"   Failed to create XC swaps for exit position {i}")
+                            
+                            
                             
                     except Exception as e:
-                        print(f"   Error calculating exit position {i}: {e}")
+                        pass
             
             # Store the calculated P&L in the trade object
             if position_count > 0:
@@ -2180,20 +2134,19 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
                 trade.pnl_timestamp = datetime.now().isoformat()
                 total_portfolio_pnl += trade_total_pnl
                 trades_updated += 1
-                print(f"✅ Swap trade {trade_id} P&L: ${trade_total_pnl:,.2f} ({position_count} positions)")
-            else:
-                print(f"⚠️ No valid positions found for swap trade {trade_id}")
+                
+                
         
         # Update portfolio-level metadata
         portfolio.last_pnl_update = datetime.now().isoformat()
         portfolio.total_portfolio_pnl = total_portfolio_pnl
         
         # Save the updated portfolio to JSON file
-        print("💾 Saving updated P&L to JSON file...")
+        
         portfolio.save_to_file()
         
-        print(f"✅ Swap P&L calculation complete: {trades_updated}/{swap_trades_processed} swap trades updated")
-        print(f"💰 Total swap portfolio P&L: ${total_portfolio_pnl:,.2f}")
+        
+        
         
         return {
             'success': True,
@@ -2208,7 +2161,7 @@ def calculate_swap_portfolio_pnl(portfolio) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        print(f"❌ Error in calculate_swap_portfolio_pnl: {e}")
+        
         return {'success': False, 'error': str(e)}
 
 def get_futures_instrument_names(portfolio) -> List[str]:
@@ -2239,14 +2192,14 @@ def get_futures_instrument_names(portfolio) -> List[str]:
                     for instrument in trade.instrument_details_secondary:
                         if instrument:
                             futures_instruments.add(instrument)
-                            print(f"🔍 Added EFP futures instrument: {instrument}")
+                            
         
         futures_list = list(futures_instruments)
-        print(f"🔍 Found {len(futures_list)} unique futures instruments: {futures_list}")
+        
         return futures_list
         
     except Exception as e:
-        print(f"❌ Error extracting futures instrument names: {e}")
+        
         return []
 
 def get_futures_history(portfolio) -> pd.DataFrame:
@@ -2296,30 +2249,26 @@ def get_futures_history(portfolio) -> pd.DataFrame:
         # Use earliest date or fall back to 30 days ago
         if earliest_date:
             start_date = earliest_date.strftime('%Y%m%d')
-            print(f"📅 Using earliest insertion date as start: {start_date}")
+            
         else:
             start_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
-            print(f"📅 No insertion dates found, using 30-day lookback: {start_date}")
+            
         
         # End date is today
         end_date = datetime.now().strftime('%Y%m%d')
         
-        print(f"📊 Getting futures historical data from {start_date} to {end_date}")
+        
         
         # Get all futures instrument names from the portfolio
         futures_instruments = get_futures_instrument_names(portfolio)
         
         if not futures_instruments:
-            print("⚠️ No futures instruments found in portfolio")
+            
             return pd.DataFrame()
-        
-        print(f"📊 Requesting historical data for {len(futures_instruments)} instruments:")
-        for instrument in futures_instruments:
-            print(f"   - {instrument}")
         
         # Use Bloomberg BDH to get historical data
         # BDH returns DataFrame with MultiIndex columns (ticker, field)
-        print(f"🔄 Calling Bloomberg BDH...")
+        
         hist_df = blp.bdh(
             tickers=futures_instruments,
             flds=['px_last'],
@@ -2328,7 +2277,7 @@ def get_futures_history(portfolio) -> pd.DataFrame:
         )
         
         if hist_df is None or hist_df.empty:
-            print("⚠️ No historical data returned from Bloomberg")
+            
             return pd.DataFrame()
         
         # BDH returns MultiIndex columns: (ticker, field)
@@ -2337,22 +2286,17 @@ def get_futures_history(portfolio) -> pd.DataFrame:
             # Extract just the ticker level (level 0)
             hist_df.columns = hist_df.columns.get_level_values(0)
         
-        print(f"✅ Retrieved historical data:")
-        print(f"   Date range: {hist_df.index.min()} to {hist_df.index.max()}")
-        print(f"   Number of dates: {len(hist_df)}")
-        print(f"   Instruments: {list(hist_df.columns)}")
+        
+        
+        
+        
         
         # Display sample data (first 3 and last 3 rows)
-        print("\n📊 Sample data (first 3 rows):")
-        print(hist_df.head(3))
-        if len(hist_df) > 6:
-            print("\n📊 Sample data (last 3 rows):")
-            print(hist_df.tail(3))
         
         return hist_df
         
     except Exception as e:
-        print(f"❌ Error getting futures historical data: {e}")
+        
         import traceback
         traceback.print_exc()
         return pd.DataFrame()
@@ -2369,10 +2313,10 @@ def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
         Index: instrument names
     """
     try:
-        print(f"🔄 Getting FX details for {len(fx_instruments)} instruments...")
+        
         
         if not fx_instruments:
-            print("⚠️ No FX instruments provided")
+            
             return pd.DataFrame()
         
         # Create the result DataFrame with the required columns
@@ -2389,23 +2333,23 @@ def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
                 last_three = instrument_base[-3:].upper()  # Last 3 characters
                 fx_ticker = f"{last_three}AUD Curncy"
                 fx_tickers_needed.append(fx_ticker)
-                print(f"🔍 Need FX rate for tick value: {fx_ticker}")
+                
         
         # Get the FX rates
         fx_rates = {}
         if fx_tickers_needed:
             try:
-                print(f"📊 Getting FX rates for tick value calculation: {fx_tickers_needed}")
+                
                 fx_df = blp.bdp(tickers=fx_tickers_needed, flds=['px_mid'])
                 
                 for fx_ticker in fx_df.index:
                     fx_rate = fx_df.loc[fx_ticker, 'px_mid']
                     currency = fx_ticker.replace('AUD Curncy', '').strip()
                     fx_rates[currency] = fx_rate
-                    print(f"💱 {currency}AUD rate: {fx_rate}")
+                    
                     
             except Exception as e:
-                print(f"⚠️ Error getting FX rates: {e}")
+                
                 # Use default rate of 1.0 if we can't get FX data
                 for instrument in fx_instruments:
                     instrument_base = instrument.split()[0] if ' ' in instrument else instrument
@@ -2415,15 +2359,15 @@ def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
         
         # Get px_mid for the original instruments
         try:
-            print(f"📊 Getting px_mid for FX instruments: {fx_instruments}")
+            
             px_df = blp.bdp(tickers=fx_instruments, flds=['px_mid'])
             
             for instrument in fx_instruments:
                 if instrument in px_df.index:
                     result_df.loc[instrument, 'px_mid'] = px_df.loc[instrument, 'px_mid']
-                    print(f"📊 PX Mid for {instrument}: {px_df.loc[instrument, 'px_mid']}")
+                    
         except Exception as e:
-            print(f"⚠️ Error getting px_mid for FX instruments: {e}")
+            pass
         
         # Calculate tick size and tick value for each instrument
         for instrument in fx_instruments:
@@ -2438,15 +2382,15 @@ def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
                 tick_value = fx_rate * 100
                 result_df.loc[instrument, 'fut_tick_val'] = tick_value
                 
-                print(f"✅ FX details for {instrument}:")
-                print(f"   Tick Size: {result_df.loc[instrument, 'fut_tick_size']}")
-                print(f"   Tick Value: ${tick_value} (from {last_three}AUD rate {fx_rate} * 100)")
-                print(f"   PX Mid: {result_df.loc[instrument, 'px_mid']}")
+                
+                
+                
+                
         
         return result_df
         
     except Exception as e:
-        print(f"❌ Error getting FX details: {e}")
+        
         return pd.DataFrame()
 
 def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
@@ -2462,30 +2406,30 @@ def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
         Index: instrument names
     """
     try:
-        print(f"🔄 Getting futures details for {len(futures_instruments)} instruments...")
+        
         
         if not futures_instruments:
-            print("⚠️ No futures instruments provided")
+            
             return pd.DataFrame()
         
         # Check if first element ends in "curncy" - if so, route to FX handler
         if futures_instruments[0].lower().endswith("curncy"):
-            print("🔀 Detected FX futures (ending in 'curncy'), routing to get_fx_detail_df")
+            
             return get_fx_detail_df(futures_instruments)
     
         # Original logic for non-FX futures
         # Define the fields we want to retrieve (including currency)
         fields = ['fut_tick_size', 'fut_tick_val', 'px_mid', 'crncy']
         
-        print(f"📊 Requesting Bloomberg data for fields: {fields}")
-        print(f"📊 Securities: {futures_instruments}")
+        
+        
         
         # Use Bloomberg BDP to get the data - correct parameter names are 'tickers' and 'flds'
         df = blp.bdp(tickers=futures_instruments, flds=fields)
         
         # CURRENCY CONVERSION: Adjust fut_tick_val by currency to convert to AUD
         if 'crncy' in df.columns and 'fut_tick_val' in df.columns:
-            print("💱 Converting fut_tick_val to AUD using FX rates...")
+            
             
             # Create currency tickers for FX rates
             ccy_tickers = []
@@ -2495,30 +2439,30 @@ def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
                 if ccy.upper() != 'AUD':  # Don't need FX rate for AUD
                     fx_ticker = f"{ccy.upper()}AUD Curncy"
                     ccy_tickers.append(fx_ticker)
-                    print(f"🔍 Adding FX ticker: {fx_ticker}")
+                    
             
             # Get FX rates if we have non-AUD currencies
             fx_rates = {}
             if ccy_tickers:
                 try:
-                    print(f"📊 Getting FX rates for: {ccy_tickers}")
+                    
                     fx_df = blp.bdp(tickers=ccy_tickers, flds=['px_mid'])
                     
                     for fx_ticker in fx_df.index:
                         fx_rate = fx_df.loc[fx_ticker, 'px_mid']
                         currency = fx_ticker.replace('AUD Curncy', '').strip()
                         fx_rates[currency] = fx_rate
-                        print(f"💱 {currency}AUD rate: {fx_rate}")
+                        
                         
                 except Exception as e:
-                    print(f"⚠️ Error getting FX rates: {e}")
-                    print("⚠️ Using default FX rate of 1.0 for all currencies")
+                    
+                    
                     for ccy in unique_currencies:
                         if ccy.upper() != 'AUD':
                             fx_rates[ccy.upper()] = 1.0
             
             # Apply currency conversion to fut_tick_val
-            print("🔧 Applying currency conversion to fut_tick_val...")
+            
             for instrument in df.index:
                 if pd.notna(df.loc[instrument, 'crncy']) and pd.notna(df.loc[instrument, 'fut_tick_val']):
                     currency = df.loc[instrument, 'crncy'].upper()
@@ -2527,33 +2471,19 @@ def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
                     if currency == 'AUD':
                         # Already in AUD, no conversion needed
                         converted_tick_val = original_tick_val
-                        print(f"   {instrument}: {currency} - No conversion needed: ${converted_tick_val}")
+                        
                     else:
                         # Convert to AUD using FX rate
                         fx_rate = fx_rates.get(currency, 1.0)
                         converted_tick_val = original_tick_val * fx_rate
                         df.loc[instrument, 'fut_tick_val'] = converted_tick_val
-                        print(f"   {instrument}: {currency} -> AUD (rate: {fx_rate}) - ${original_tick_val} -> ${converted_tick_val}")
+                        
 
-        print(df)
-
-        # Display the actual data
-        print("📊 Futures Details (with AUD-converted tick values):")
-        for instrument in df.index:
-            print(f"   {instrument}:")
-            if 'fut_tick_size' in df.columns:
-                print(f"     Tick Size: {df.loc[instrument, 'fut_tick_size']}")
-            if 'fut_tick_val' in df.columns:
-                print(f"     Tick Value (AUD): ${df.loc[instrument, 'fut_tick_val']}")
-            if 'px_mid' in df.columns:
-                print(f"     PX Mid: {df.loc[instrument, 'px_mid']}")
-            if 'crncy' in df.columns:
-                print(f"     Currency: {df.loc[instrument, 'crncy']}")
         
         return df
         
     except Exception as e:
-        print(f"❌ Error getting futures details: {e}")
+        
         return pd.DataFrame()
 
 def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame = None) -> Dict[str, Any]:
@@ -2568,7 +2498,7 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
         Dictionary with P&L results for futures trades only
     """
     try:
-        print("🔄 Calculating P&L for futures trades only...")
+        
         
         trades_updated = 0
         total_portfolio_pnl = 0.0
@@ -2577,19 +2507,19 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
         for trade_id, trade in portfolio.trades.items():
             # Filter for futures trades only
             if not trade.typology or 'future' not in [t.lower() for t in trade.typology]:
-                print(f"⏭️ Skipping non-futures trade: {trade_id} (typology: {trade.typology})")
+                
                 continue
                 
             futures_trades_processed += 1
-            print(f"🧮 Calculating P&L for futures trade: {trade_id}")
+            
             
             # Get the first instrument for P&L calculations
             if not trade.instrument_details or len(trade.instrument_details) == 0:
-                print(f"❌ No instrument details for trade {trade_id}")
+                
                 continue
                 
             instrument = trade.instrument_details[0]
-            print(f"📊 Using instrument: {instrument}")
+            
             
             trade_total_pnl = 0.0
             position_count = 0
@@ -2597,7 +2527,7 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
             # Calculate P&L for all entry positions
             for i, (price, size) in enumerate(zip(trade.entry_prices, trade.entry_sizes)):
                 if price and size:  # Only process non-zero positions
-                    print(f"🔧 Entry position {i}: price={price}, size={size}")
+                    
                     
                     try:
                         temp_handle = f"{trade_id}_entry_{i}_pnl_calc"
@@ -2613,15 +2543,16 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
                         position_pnl = pnl_result['pnl']
                         trade_total_pnl += position_pnl
                         position_count += 1
-                        print(f"   Entry position {i} P&L: ${position_pnl:,.2f}")
+                        
                             
                     except Exception as e:
-                        print(f"   Error calculating entry position {i}: {e}")
+                        pass
+                        
             
             # Calculate P&L for all exit positions
             for i, (price, size) in enumerate(zip(trade.exit_prices, trade.exit_sizes)):
                 if price and size:  # Only process non-zero positions
-                    print(f"🔧 Exit position {i}: price={price}, size={size}")
+                    
                     
                     try:
                         temp_handle = f"{trade_id}_exit_{i}_pnl_calc"
@@ -2637,10 +2568,11 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
                         position_pnl = pnl_result['pnl']
                         trade_total_pnl += position_pnl
                         position_count += 1
-                        print(f"   Exit position {i} P&L: ${position_pnl:,.2f}")
+                        
                             
                     except Exception as e:
-                        print(f"   Error calculating exit position {i}: {e}")
+                        pass
+                        
             
             # Store the calculated P&L in the trade object
             if position_count > 0:
@@ -2648,20 +2580,19 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
                 trade.pnl_timestamp = datetime.now().isoformat()
                 total_portfolio_pnl += trade_total_pnl
                 trades_updated += 1
-                print(f"✅ Futures trade {trade_id} P&L: ${trade_total_pnl:,.2f} ({position_count} positions)")
-            else:
-                print(f"⚠️ No valid positions found for futures trade {trade_id}")
+                
+                
         
         # Update portfolio-level metadata
         portfolio.last_pnl_update = datetime.now().isoformat()
         portfolio.total_portfolio_pnl = total_portfolio_pnl
         
         # Save the updated portfolio to JSON file
-        print("💾 Saving updated P&L to JSON file...")
+        
         portfolio.save_to_file()
         
-        print(f"✅ Futures P&L calculation complete: {trades_updated}/{futures_trades_processed} futures trades updated")
-        print(f"💰 Total futures portfolio P&L: ${total_portfolio_pnl:,.2f}")
+        
+        
         
         return {
             'success': True,
@@ -2677,7 +2608,7 @@ def calculate_futures_portfolio_pnl(portfolio, futures_tick_data: pd.DataFrame =
         }
         
     except Exception as e:
-        print(f"❌ Error in calculate_futures_portfolio_pnl: {e}")
+        
         return {'success': False, 'error': str(e)}
 
 def parse_futures_expression(expression: str) -> List[Dict[str, Any]]:
@@ -2696,7 +2627,7 @@ def parse_futures_expression(expression: str) -> List[Dict[str, Any]]:
         - coefficient: The multiplier for this instrument (+1, -1, +2, etc.)
     """
     try:
-        print(f"🔍 Parsing futures expression: {expression}")
+        
         
         # Normalize the expression - remove extra spaces and make lowercase for parsing
         expr = expression.strip().lower()
@@ -2710,13 +2641,13 @@ def parse_futures_expression(expression: str) -> List[Dict[str, Any]]:
         
         if not instruments:
             # If no instruments found, treat the whole expression as a single instrument
-            print(f"⚠️ No standard futures instruments found, treating as single instrument: {expression}")
+            
             return [{
                 'instrument': expression.strip(),
                 'coefficient': 1.0
             }]
         
-        print(f"🔍 Found futures instruments: {instruments}")
+        
         
         # Parse the expression to extract coefficients
         components = []
@@ -2730,13 +2661,13 @@ def parse_futures_expression(expression: str) -> List[Dict[str, Any]]:
             instrument_positions[placeholder] = instrument.strip()
             temp_expr = temp_expr.replace(instrument, placeholder, 1)  # Replace only first occurrence
         
-        print(f"🔍 Expression with placeholders: {temp_expr}")
+        
         
         # Split by + and - while keeping the operators
         parts = re.split(r'(\+|\-)', temp_expr)
         parts = [part.strip() for part in parts if part.strip()]
         
-        print(f"🔍 Split parts: {parts}")
+        
         
         # Process each part to extract coefficient and instrument
         current_sign = 1  # Start with positive
@@ -2772,12 +2703,12 @@ def parse_futures_expression(expression: str) -> List[Dict[str, Any]]:
                     'coefficient': coefficient
                 })
                 
-                print(f"✅ Added futures component: {instrument} with coefficient {coefficient}")
+                
         
         return components
         
     except Exception as e:
-        print(f"❌ Error parsing futures expression {expression}: {e}")
+        
         return []
 
 def solve_futures_component_prices(components: List[Dict[str, Any]], spread_price: float, 
@@ -2802,7 +2733,7 @@ def solve_futures_component_prices(components: List[Dict[str, Any]], spread_pric
         Dictionary mapping instrument -> price to use for P&L calculation
     """
     try:
-        print(f"🔧 Solving futures component prices for spread price: {spread_price}")
+        
         
         # Get current prices for all components from futures_tick_data
         current_prices = {}
@@ -2810,14 +2741,14 @@ def solve_futures_component_prices(components: List[Dict[str, Any]], spread_pric
             instrument = comp['instrument']
             
             if futures_tick_data is None or futures_tick_data.empty:
-                print(f"⚠️ No futures tick data available for {instrument}, using spread price")
+                
                 current_prices[instrument] = spread_price
             elif instrument in futures_tick_data.index:
                 px_mid = futures_tick_data.loc[instrument, 'px_mid']
                 current_prices[instrument] = px_mid
-                print(f"📊 Current price for {instrument}: {px_mid}")
+                
             else:
-                print(f"⚠️ Instrument {instrument} not found in tick data, using spread price")
+                
                 current_prices[instrument] = spread_price
         
         # Find the component with the largest absolute coefficient to solve for
@@ -2831,10 +2762,10 @@ def solve_futures_component_prices(components: List[Dict[str, Any]], spread_pric
                 solve_for_instrument = comp['instrument']
         
         if not solve_for_instrument:
-            print("❌ No component found to solve for")
+            
             return current_prices
         
-        print(f"🎯 Solving for: {solve_for_instrument}")
+        
         
         # Calculate the sum of all other components
         other_sum = 0.0
@@ -2851,13 +2782,13 @@ def solve_futures_component_prices(components: List[Dict[str, Any]], spread_pric
                 break
         
         if solve_coeff == 0:
-            print(f"❌ Cannot solve: coefficient for {solve_for_instrument} is zero")
+            
             return current_prices
         
         solved_price = (spread_price - other_sum) / solve_coeff
         
-        print(f"🧮 Calculation: {solve_coeff} * price = {spread_price} - {other_sum}")
-        print(f"✅ Solved price for {solve_for_instrument}: {solved_price}")
+        
+        
         
         # Update the prices dictionary
         component_prices = current_prices.copy()
@@ -2865,11 +2796,11 @@ def solve_futures_component_prices(components: List[Dict[str, Any]], spread_pric
         
         # Verify the calculation
         verification = sum(comp['coefficient'] * component_prices[comp['instrument']] for comp in components)
-        print(f"🔍 Verification: calculated spread = {verification}, target = {spread_price}")
+        
         
         return component_prices
         
     except Exception as e:
-        print(f"❌ Error solving futures component prices: {e}")
+        
         # Return current prices as fallback
         return {comp['instrument']: spread_price for comp in components}
