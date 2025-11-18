@@ -825,7 +825,7 @@ class Trade:
                         
             
             
-            return True
+            # DON'T return True here - let it fall through to the array calculation at the bottom!
         
         # Handle standard swap trades
         elif trade_type == 'swap':
@@ -1034,11 +1034,19 @@ class Trade:
             - secondary_pnl_array: List of (date, pnl) tuples for secondary positions only
         """
         try:
-            
+            print(f"\n{'='*80}")
+            print(f"🔍 CALCULATE_ARRAY_PNL CALLED FOR TRADE: {self.trade_id}")
+            print(f"Trade typology: {self.typology}")
+            print(f"Secondary typology: {self.secondary_typology}")
+            print(f"Primary positions count: {len(self.positions)}")
+            print(f"Secondary positions count: {len(self.positions_secondary)}")
+            print(f"futures_tick_data provided: {futures_tick_data is not None and not futures_tick_data.empty if futures_tick_data is not None else False}")
+            print(f"historical_prices provided: {historical_prices is not None and not historical_prices.empty if historical_prices is not None else False}")
+            print(f"{'='*80}\n")
             
             if not self.positions and not self.positions_secondary:
                 error_msg = f"No positions created for trade {self.trade_id}"
-                
+                print(f"❌ ERROR: {error_msg}")
                 return {
                     'pnl_array': [],
                     'primary_pnl_array': [],
@@ -1051,47 +1059,146 @@ class Trade:
             secondary_position_pnls = []  # List of {date -> pnl} dicts for secondary positions
             
             # Collect PnL arrays from primary positions (swaps or futures)
-            for position in self.positions:
-                if isinstance(position, XCSwapPosition):
-                    # Call swap position calculate_array_pnl (no params needed)
-                    result = position.calculate_array_pnl()
-                elif isinstance(position, XCFuturesPosition):
-                    # Call futures position calculate_array_pnl (needs tick data and historical prices)
-                    result = position.calculate_array_pnl(futures_tick_data, historical_prices)
-                else:
+            for i, position in enumerate(self.positions):
+                print(f"\n{'='*60}")
+                print(f"PRIMARY POSITION {i}: {position.handle}")
+                print(f"Position type: {type(position).__name__}")
+                print(f"Position instrument: {position.instrument}")
+                print(f"Position insertion_date: {position.insertion_date}")
+                print(f"{'='*60}")
+                
+                try:
+                    if isinstance(position, XCSwapPosition):
+                        print(f"📊 Calling calculate_array_pnl for XCSwapPosition...")
+                        # Call swap position calculate_array_pnl (no params needed)
+                        result = position.calculate_array_pnl()
+                        print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
+                    elif isinstance(position, XCFuturesPosition):
+                        print(f"📊 Calling calculate_array_pnl for XCFuturesPosition...")
+                        print(f"   - futures_tick_data shape: {futures_tick_data.shape if futures_tick_data is not None else 'None'}")
+                        print(f"   - historical_prices shape: {historical_prices.shape if historical_prices is not None else 'None'}")
+                        # Call futures position calculate_array_pnl (needs tick data and historical prices)
+                        result = position.calculate_array_pnl(futures_tick_data, historical_prices)
+                        print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
+                    else:
+                        print(f"❌ Unknown position type: {type(position).__name__}")
+                        continue
                     
-                    continue
-                
-                if result.get('error'):
+                    if result.get('error'):
+                        print(f"❌ ERROR: {result['error']}")
+                        continue
                     
+                    # Convert array list to dictionary, normalizing dates to datetime.date
+                    pnl_dict = {}
+                    for date, pnl in result['pnl_array']:
+                        # Normalize to datetime.date for consistency
+                        if isinstance(date, datetime):
+                            date_key = date.date()
+                        else:
+                            date_key = date
+                        pnl_dict[date_key] = pnl
+                    primary_position_pnls.append(pnl_dict)
+                    
+                    print(f"✓ Array generated with {len(pnl_dict)} dates")
+                    if len(pnl_dict) > 0:
+                        # Show first and last date
+                        dates = sorted(pnl_dict.keys())
+                        print(f"  First date: {dates[0]} → PnL: {pnl_dict[dates[0]]:.2f}")
+                        print(f"  Last date: {dates[-1]} → PnL: {pnl_dict[dates[-1]]:.2f}")
+                        
+                except Exception as e:
+                    print(f"❌ EXCEPTION calculating array PnL: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
                     continue
-                
-                # Convert array list to dictionary for easier intersection
-                pnl_dict = {date: pnl for date, pnl in result['pnl_array']}
-                primary_position_pnls.append(pnl_dict)
-                
+            
+            print(f"\n{'='*60}")
+            print(f"TOTAL PRIMARY POSITIONS COLLECTED: {len(primary_position_pnls)}")
+            print(f"{'='*60}\n")
             
             # Collect PnL arrays from secondary positions (futures for EFP)
-            for position in self.positions_secondary:
-                if isinstance(position, XCFuturesPosition):
-                    # Call futures position calculate_array_pnl
-                    result = position.calculate_array_pnl(futures_tick_data, historical_prices)
-                elif isinstance(position, XCSwapPosition):
-                    # Call swap position calculate_array_pnl
-                    result = position.calculate_array_pnl()
-                else:
-                    
-                    continue
-                
-                if result.get('error'):
-                    
-                    continue
-                
-                # Convert array list to dictionary
-                pnl_dict = {date: pnl for date, pnl in result['pnl_array']}
-                secondary_position_pnls.append(pnl_dict)
-                
+            print(f"\n{'='*60}")
+            print(f"🔍 PROCESSING SECONDARY POSITIONS (EFP FUTURES LEG)")
+            print(f"Total secondary positions: {len(self.positions_secondary)}")
+            print(f"{'='*60}\n")
             
+            for i, position in enumerate(self.positions_secondary):
+                print(f"\n{'='*60}")
+                print(f"SECONDARY POSITION {i}: {position.handle}")
+                print(f"Position type: {type(position).__name__}")
+                print(f"Position instrument: {position.instrument}")
+                print(f"Position insertion_date: {position.insertion_date}")
+                print(f"Position futures_built: {position.futures_built}")
+                print(f"Position components: {len(position.components)}")
+                print(f"{'='*60}")
+                
+                try:
+                    if isinstance(position, XCFuturesPosition):
+                        print(f"📊 Calling calculate_array_pnl for XCFuturesPosition (SECONDARY)...")
+                        print(f"   - futures_tick_data provided: {futures_tick_data is not None and not futures_tick_data.empty if futures_tick_data is not None else False}")
+                        print(f"   - historical_prices provided: {historical_prices is not None and not historical_prices.empty if historical_prices is not None else False}")
+                        
+                        # DEBUG: Check if futures_tick_data has required instruments
+                        if futures_tick_data is not None and not futures_tick_data.empty:
+                            print(f"   - futures_tick_data columns: {list(futures_tick_data.columns)}")
+                            print(f"   - futures_tick_data index (instruments): {list(futures_tick_data.index)}")
+                            for comp in position.components:
+                                instrument = comp['instrument']
+                                in_tick_data = instrument in futures_tick_data.index
+                                print(f"   - Component {instrument} in tick_data: {in_tick_data}")
+                        
+                        # DEBUG: Check if historical_prices has required instruments
+                        if historical_prices is not None and not historical_prices.empty:
+                            print(f"   - historical_prices columns (instruments): {list(historical_prices.columns)}")
+                            print(f"   - historical_prices shape: {historical_prices.shape}")
+                            for comp in position.components:
+                                instrument = comp['instrument']
+                                in_hist_prices = instrument in historical_prices.columns
+                                print(f"   - Component {instrument} in historical_prices: {in_hist_prices}")
+                        
+                        # Call futures position calculate_array_pnl
+                        result = position.calculate_array_pnl(futures_tick_data, historical_prices)
+                        print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
+                    elif isinstance(position, XCSwapPosition):
+                        print(f"📊 Calling calculate_array_pnl for XCSwapPosition (SECONDARY)...")
+                        # Call swap position calculate_array_pnl
+                        result = position.calculate_array_pnl()
+                        print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
+                    else:
+                        print(f"❌ Unknown position type: {type(position).__name__}")
+                        continue
+                    
+                    if result.get('error'):
+                        print(f"❌ ERROR: {result['error']}")
+                        continue
+                    
+                    # Convert array list to dictionary, normalizing dates to datetime.date
+                    pnl_dict = {}
+                    for date, pnl in result['pnl_array']:
+                        # Normalize to datetime.date for consistency
+                        if isinstance(date, datetime):
+                            date_key = date.date()
+                        else:
+                            date_key = date
+                        pnl_dict[date_key] = pnl
+                    secondary_position_pnls.append(pnl_dict)
+                    
+                    print(f"✓ Array generated with {len(pnl_dict)} dates")
+                    if len(pnl_dict) > 0:
+                        # Show first and last date
+                        dates = sorted(pnl_dict.keys())
+                        print(f"  First date: {dates[0]} → PnL: {pnl_dict[dates[0]]:.2f}")
+                        print(f"  Last date: {dates[-1]} → PnL: {pnl_dict[dates[-1]]:.2f}")
+                        
+                except Exception as e:
+                    print(f"❌ EXCEPTION calculating array PnL: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
+            
+            print(f"\n{'='*60}")
+            print(f"TOTAL SECONDARY POSITIONS COLLECTED: {len(secondary_position_pnls)}")
+            print(f"{'='*60}\n")
             # Find UNION of dates across ALL positions (primary and secondary)
             all_position_pnls = primary_position_pnls + secondary_position_pnls
             

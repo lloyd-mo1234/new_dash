@@ -1533,11 +1533,48 @@
                 currentTradeId = tradeId;
                 loadTradeForEditing(tradeId);
             } else {
-                // Creating new trade - just build blank modal WITHOUT creating backend entry
-                console.log('🆕 Building blank modal for new trade (no backend call)');
-                currentTradeId = null; // No trade ID yet
-                buildBlankModal();
+                // Creating new trade - CREATE temporary backend entry (in memory only)
+                console.log('🆕 Creating temporary backend trade entry (memory only, no JSON save)');
+                createTemporaryTrade();
             }
+        }
+        
+        function createTemporaryTrade() {
+            // Create a temporary trade with a timestamp-based ID
+            const tempTradeId = `Trade_${new Date().getTime()}`;
+            
+            console.log('📤 Creating temporary trade in memory:', tempTradeId);
+            
+            fetch('/add_trade', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: tempTradeId,
+                    typologies: [],
+                    instruments: [],
+                    entry_prices: [],
+                    entry_sizes: [],
+                    skip_save: true  // CRITICAL: Don't save to JSON
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentTradeId = data.trade_id;
+                    console.log('✅ Temporary trade created in memory with ID:', currentTradeId);
+                    console.log('📝 Trade is temporary (not saved to JSON):', data.temporary);
+                    buildBlankModal();
+                } else {
+                    console.error('❌ Failed to create temporary trade:', data.error);
+                    alert('Error creating trade: ' + data.error);
+                    closeTradeModal();
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error creating temporary trade:', error);
+                alert('Error creating trade: ' + error.message);
+                closeTradeModal();
+            });
         }
         
         function buildBlankModal() {
@@ -1935,10 +1972,49 @@
             
             console.log(`📊 Type: ${tradeType}, Instrument: ${instrument}`);
             
-            // Step 2: Add UI row directly (without backend call)
-            // The position will only be saved to JSON when user clicks "Save Trade"
-            console.log('🎨 Adding UI row without modifying JSON...');
-            addPositionUIRow(tableType, tradeType, instrument);
+            // Step 2: Create backend position object immediately
+            console.log('🔧 Creating backend position object with placeholder values...');
+            
+            // Get the position index (next available position)
+            const tbody = tableType === 'secondary' 
+                ? document.getElementById('secondaryPositionsTableBody')
+                : document.getElementById('positionsTableBody');
+            const positionIndex = tbody.querySelectorAll('tr').length;
+            
+            // Create backend position with placeholder values
+            const payload = {
+                trade_id: currentTradeId,
+                position_index: positionIndex,
+                positionType: tableType,
+                tradeType: tradeType,  // CRITICAL: Include trade type
+                instrument: instrument,  // CRITICAL: Include instrument
+                price: 0,  // Placeholder
+                size: 0,   // Placeholder
+                insertion_date: new Date().toISOString().split('T')[0]
+            };
+            
+            console.log('📤 Creating backend position:', payload);
+            
+            fetch('/add_position', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✅ Backend position created successfully');
+                    // Now add UI row
+                    addPositionUIRow(tableType, tradeType, instrument);
+                } else {
+                    console.error('❌ Failed to create backend position:', data.error);
+                    alert('Error creating position: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error creating backend position:', error);
+                alert('Error creating position: ' + error.message);
+            });
         }
         
         function addPositionUIRow(tableType, tradeType, instrument) {
@@ -4071,7 +4147,7 @@
                 pnlDisplay.textContent = 'Updating...';
                 pnlDisplay.style.color = '#cccccc';
                 
-                const editPayload = {
+                const payload = {
                     trade_id: currentTradeId,
                     position_index: positionIndex,
                     positionType: tableType,
@@ -4080,13 +4156,13 @@
                     insertion_date: insertionDate
                 };
                 
-                console.log('📤 EDIT POSITION REQUEST:', editPayload);
+                console.log('📤 POSITION UPDATE REQUEST:', payload);
                 
-                // Step 1: Edit the position in backend
+                // Step 1: Edit the position (it already exists from addPosition)
                 fetch('/edit_position', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(editPayload)
+                    body: JSON.stringify(payload)
                 })
                 .then(response => {
                     console.log('📡 Edit position response status:', response.status);
@@ -4100,6 +4176,9 @@
                     }
                     
                     console.log(`✅ Position ${positionIndex} (${tableType}) updated in backend successfully`);
+                    return data;
+                })
+                .then(data => {
                     
                     // Step 2: Calculate P&L for the updated position
                     pnlDisplay.textContent = 'Calculating...';

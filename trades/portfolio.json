@@ -1,7 +1,7 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-18T14:48:44.555323",
-    "total_portfolio_pnl": 12324347.358846426
+    "last_pnl_update": "2025-11-18T16:32:10.256144",
+    "total_portfolio_pnl": -1167064.8582615783
   },
   "trades": {
     "efp1": {
@@ -15,13 +15,13 @@
         5.0
       ],
       "sizes": [
-        100.0
+        20.0
       ],
       "instrument_details": [
         "aud.5y5y"
       ],
-      "stored_pnl": 1972346.6794225345,
-      "pnl_timestamp": "2025-11-18T14:48:44.555323",
+      "stored_pnl": 1693006.5773386057,
+      "pnl_timestamp": "2025-11-18T16:32:10.256144",
       "prices_secondary": [
         97.0,
         96.0
@@ -33,41 +33,41 @@
       "instrument_details_secondary": [
         "xmz5 comdty"
       ],
-      "stored_pnl_primary": 352000.67942254245,
-      "stored_pnl_secondary": 1620345.999999992,
+      "stored_pnl_primary": 64822.577338596806,
+      "stored_pnl_secondary": 1628184.0000000088,
       "primary_pos_insertion_dt": [
-        "2025-11-18"
+        "2025-09-18"
       ],
       "secondary_pos_insertion_dt": [
-        "2025-11-18",
-        "2025-11-18"
+        "2025-09-18",
+        "2025-09-18"
       ]
     },
-    "trade1": {
-      "trade_id": "trade1",
+    "Trade_1763483482102": {
+      "trade_id": "Trade_1763483482102",
       "typology": [
         "swap"
       ],
       "secondary_typology": null,
       "group_id": "",
       "prices": [
-        6
+        5.0
       ],
       "sizes": [
-        100
+        100.0
       ],
       "instrument_details": [
-        "aud.5y5y"
+        "aud.10y10y"
       ],
-      "stored_pnl": 10352000.679423891,
-      "pnl_timestamp": "2025-11-18T14:48:44.555323",
+      "stored_pnl": -2860071.435600184,
+      "pnl_timestamp": "2025-11-18T16:32:10.256144",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],
       "stored_pnl_primary": null,
       "stored_pnl_secondary": null,
       "primary_pos_insertion_dt": [
-        "2025-11-18"
+        "2025-11-10"
       ],
       "secondary_pos_insertion_dt": []
     }

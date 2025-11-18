@@ -1058,13 +1058,16 @@ def add_trade():
         # Add to portfolio
         portfolio.add_trade(trade)
         
-        # Save to file
-        portfolio.save_to_file()
+        # Save to file ONLY if not a temporary trade
+        skip_save = data.get('skip_save', False)
+        if not skip_save:
+            portfolio.save_to_file()
         
         return jsonify({
             'success': True,
             'trade_id': trade_id,
-            'message': f'Trade {trade_id} added successfully'
+            'message': f'Trade {trade_id} added successfully',
+            'temporary': skip_save
         })
         
     except Exception as e:
@@ -1457,8 +1460,9 @@ def add_position():
         else:
             size_is_valid = True  # Single size is always valid (including 0)
         
-        if not instrument:
-            return jsonify({'error': 'Missing required parameters'}), 400
+        # Allow empty instrument for placeholder positions (will be filled in later when user enters trade type and instrument)
+        # if not instrument:
+        #     return jsonify({'error': 'Missing required parameters'}), 400
         
         # Determine which positions array to use
         # Allow secondary positions for any trade that requests it
@@ -1511,11 +1515,28 @@ def add_position():
                     trade.primary_pos_insertion_dt = []
                 trade.primary_pos_insertion_dt.append(insertion_date)
             
+            # CRITICAL FIX: Recalculate and update stored PnL after adding position
+            total_trade_pnl = calculate_total_trade_pnl(trade)
+            if total_trade_pnl is not None:
+                trade.stored_pnl = total_trade_pnl
+                trade.pnl_timestamp = datetime.now().isoformat()
+            
+            # Calculate individual position PnL for display in modal
+            position_pnl = None
+            if trade_type == 'future' or (trade_type == 'efp' and position_type == 'secondary'):
+                # Get futures details
+                unique_instruments = list(set([comp['instrument'] for comp in position.components]))
+                futures_df = get_futures_details(unique_instruments)
+                pnl_result = position.calculate_pnl(futures_df)
+                position_pnl = pnl_result.get('pnl')
+            
             return jsonify({
                 'success': True,
                 'position_index': len(positions_array) - 1,
                 'position_handle': position_handle,
-                'message': 'Position added successfully'
+                'message': 'Position added successfully',
+                'updated_pnl': total_trade_pnl,  # Total trade PnL
+                'position_pnl': position_pnl  # Individual position PnL
             })
         
         # Handle SWAPS
@@ -1543,11 +1564,23 @@ def add_position():
                 trade.primary_pos_insertion_dt = []
             trade.primary_pos_insertion_dt.append(insertion_date)
             
+            # CRITICAL FIX: Recalculate and update stored PnL after adding position
+            total_trade_pnl = calculate_total_trade_pnl(trade)
+            if total_trade_pnl is not None:
+                trade.stored_pnl = total_trade_pnl
+                trade.pnl_timestamp = datetime.now().isoformat()
+            
+            # Calculate individual position PnL for display in modal
+            pnl_result = position.calculate_pnl()
+            position_pnl = pnl_result.get('pnl')
+            
             return jsonify({
                 'success': True,
                 'position_index': len(positions_array) - 1,
                 'position_handle': position_handle,
-                'message': 'Position added successfully'
+                'message': 'Position added successfully',
+                'updated_pnl': total_trade_pnl,  # Total trade PnL
+                'position_pnl': position_pnl  # Individual position PnL
             })
         
     except Exception as e:
