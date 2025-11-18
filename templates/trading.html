@@ -2759,21 +2759,22 @@
             const isTemporaryId = currentTradeId && currentTradeId.match(/^\d{8}_\d{6}$/);
             const needsRename = isTemporaryId && tradeIdentifier !== currentTradeId;
             
-            if (currentTradeId && !needsRename) {
-                // Updating existing trade (and not renaming)
-                console.log('💾 Updating existing trade:', currentTradeId);
-                
-                const updateData = {
-                    trade_id: currentTradeId,
-                    typologies: typologies,
-                    instruments: instruments,
-                    entry_prices: entryPositions.map(p => p.price),
-                    entry_sizes: entryPositions.map(p => p.size),
-                    exit_prices: exitPositions.map(p => p.price),
-                    exit_sizes: exitPositions.map(p => p.size),
-                    group_id: groupId,
-                    entry_insertion_dates: primaryInsertionDates
-                };
+        if (currentTradeId && !needsRename) {
+            // Updating existing trade (and possibly renaming)
+            console.log('💾 Updating existing trade:', currentTradeId);
+            
+            const updateData = {
+                trade_id: currentTradeId,
+                new_trade_id: tradeIdentifier !== currentTradeId ? tradeIdentifier : undefined,  // NEW: Send new ID if changed
+                typologies: typologies,
+                instruments: instruments,
+                entry_prices: entryPositions.map(p => p.price),
+                entry_sizes: entryPositions.map(p => p.size),
+                exit_prices: exitPositions.map(p => p.price),
+                exit_sizes: exitPositions.map(p => p.size),
+                group_id: groupId,
+                entry_insertion_dates: primaryInsertionDates
+            };
                 
                 console.log('📅 Including primary insertion dates:', primaryInsertionDates);
                 

@@ -534,9 +534,19 @@ class XCFuturesPosition:
         Returns:
             dict with pnl_array: list of (date, pnl) tuples
         """
+        print(f"\n🐛 DEBUG: XCFuturesPosition.calculate_array_pnl CALLED")
+        print(f"   - handle: {self.handle}")
+        print(f"   - instrument: {self.instrument}")
+        print(f"   - insertion_date: {self.insertion_date}")
+        print(f"   - futures_built: {self.futures_built}")
+        print(f"   - futures_tick_data is None: {futures_tick_data is None}")
+        print(f"   - futures_tick_data.empty: {futures_tick_data.empty if futures_tick_data is not None else 'N/A'}")
+        print(f"   - historical_prices is None: {historical_prices is None}")
+        print(f"   - historical_prices.empty: {historical_prices.empty if historical_prices is not None else 'N/A'}")
+        
         if not self.futures_built:
             error_msg = f"Futures expression for {self.handle} not built, cannot calculate P&L"
-            
+            print(f"   ❌ ERROR: {error_msg}")
             return {'pnl_array': [], 'error': error_msg}
         
         try:
@@ -562,13 +572,17 @@ class XCFuturesPosition:
             
             if futures_tick_data is None or futures_tick_data.empty:
                 error_msg = "No futures tick data provided for tick size/value information"
-                
+                print(f"   ❌ ERROR: {error_msg}")
                 return {'pnl_array': [], 'error': error_msg}
             
             if historical_prices is None or historical_prices.empty:
                 error_msg = "No historical prices DataFrame provided"
-                
+                print(f"   ❌ ERROR: {error_msg}")
                 return {'pnl_array': [], 'error': error_msg}
+            
+            print(f"   ✓ Both futures_tick_data and historical_prices are available")
+            print(f"   - futures_tick_data shape: {futures_tick_data.shape}")
+            print(f"   - historical_prices shape: {historical_prices.shape}")
             
             # Filter dates that fall within our range (inclusive)
             # historical_prices index should be datetime objects

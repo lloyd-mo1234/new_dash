@@ -1158,12 +1158,33 @@ def update_trade():
     try:
         data = request.get_json()
         
-        trade_id = data.get('trade_id')
+        old_trade_id = data.get('trade_id')  # Original trade ID
+        new_trade_id = data.get('new_trade_id')  # New trade ID (if renaming)
         
-        if trade_id not in portfolio.trades:
-            return jsonify({'error': f'Trade {trade_id} not found'}), 404
+        if old_trade_id not in portfolio.trades:
+            return jsonify({'error': f'Trade {old_trade_id} not found'}), 404
         
-        trade = portfolio.trades[trade_id]
+        trade = portfolio.trades[old_trade_id]
+        
+        # Handle trade ID change if new_trade_id is provided and different
+        if new_trade_id and new_trade_id != old_trade_id:
+            # Check if new trade ID already exists
+            if new_trade_id in portfolio.trades:
+                return jsonify({'error': f'Trade ID {new_trade_id} already exists'}), 400
+            
+            # Update trade object's trade_id
+            trade.trade_id = new_trade_id
+            
+            # Remove old key from portfolio dict
+            del portfolio.trades[old_trade_id]
+            
+            # Add with new key
+            portfolio.trades[new_trade_id] = trade
+            
+            # Use new trade_id for the rest of the function
+            trade_id = new_trade_id
+        else:
+            trade_id = old_trade_id
         
         # Update basic info if provided
         typologies = data.get('typologies', [])
