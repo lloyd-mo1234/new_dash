@@ -7,6 +7,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import threading
 import logging
+import sys
+import os
 from loader import (
     initialize_curves,
     initialize_historical_curves_only,
@@ -18,6 +20,15 @@ from loader import (
 from swap_functions import get_swap_data, get_status
 from regression_functions import prepare_regression_data, perform_regression_analysis, create_regression_charts, format_regression_statistics
 from trading_functions import *
+
+# Add printing_scripts to path
+printing_scripts_path = os.path.join(os.path.dirname(__file__), 'printing_scripts')
+if printing_scripts_path not in sys.path:
+    sys.path.append(printing_scripts_path)
+
+# Import curve generation modules
+import print_main
+import core_curve_serializer
 
 app = Flask(__name__)
 
@@ -195,19 +206,22 @@ def curves_status():
 
 @app.route('/start_loading', methods=['POST'])
 def start_loading():
-    """Start historical curve loading in background thread"""
+    """Start historical curve loading in background thread with curve generation"""
     loaded = is_curves_loaded()
     
     if not loaded:
-        # Start loading historical curves only
+        # Get max_days from request (default to 200)
+        data = request.get_json() or {}
+        max_days = data.get('max_days', 200)
+        
+        # Start loading historical curves with curve generation
         def load_thread():
-            try:
-                result = initialize_historical_curves_only(max_days=200)
-            except Exception as e:
-                pass
+            print_main.main()
+            core_curve_serializer.main()
+            initialize_historical_curves_only(max_days=max_days)
         
         threading.Thread(target=load_thread, daemon=True).start()
-        return jsonify({'success': True, 'message': 'Historical curve loading started'})
+        return jsonify({'success': True, 'message': f'Curve generation and loading started ({max_days} days)'})
     else:
         return jsonify({'success': True, 'message': 'Historical curves already loaded'})
 

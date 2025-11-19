@@ -18,6 +18,11 @@
 
         <!-- Chart controls above chart -->
         <div class="chart-controls">
+            <div class="max-days-input-container">
+                <label for="max-days-input" class="max-days-label">Days:</label>
+                <input type="number" id="max-days-input" class="max-days-input" value="200" min="1" max="10000" title="Number of days worth of curves to load">
+            </div>
+            
             <button id="load-curves-btn" class="load-curves-button">
                 <span class="load-button-text">Load Curves</span>
                 <span class="load-loading-spinner" style="display: none;">⟳</span>
@@ -840,14 +845,24 @@
         function loadCurves() {
             const loadButtonText = document.querySelector('.load-button-text');
             const loadLoadingSpinner = document.querySelector('.load-loading-spinner');
+            const maxDaysInput = document.getElementById('max-days-input');
+            
+            // Get max_days value from input (default to 200 if invalid)
+            let maxDays = parseInt(maxDaysInput.value) || 200;
             
             // Show loading state on button
             loadButtonText.style.display = 'none';
             loadLoadingSpinner.style.display = 'inline';
             loadCurvesBtn.disabled = true;
             
-            // Start loading curves
-            fetch('/start_loading', { method: 'POST' })
+            // Start loading curves with max_days parameter
+            fetch('/start_loading', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ max_days: maxDays })
+            })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {

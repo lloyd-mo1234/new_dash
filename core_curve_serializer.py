@@ -14,6 +14,9 @@ printing_scripts_path = os.path.join(script_dir, '..', 'printing_scripts')
 if printing_scripts_path not in sys.path:
     sys.path.append(printing_scripts_path)
 
+# Dates to exclude from serialization (hardcoded)
+EXCLUDED_DATES = {'900104', '930826', '900102'}
+
 # Currency configuration matching the initialize_curves function
 CURRENCY_CONFIG = {
     'aud': {
@@ -107,7 +110,15 @@ def get_all_dates(currencies: list, max_days: int = 200):
     if not all_dates:
         return []
     
-    print(f"📅 Found {len(all_dates)} total unique dates across all currencies")
+    # Filter out excluded dates
+    initial_count = len(all_dates)
+    all_dates = all_dates - EXCLUDED_DATES
+    excluded_count = initial_count - len(all_dates)
+    
+    if excluded_count > 0:
+        print(f"⛔ Excluded {excluded_count} hardcoded dates: {', '.join(sorted(EXCLUDED_DATES & set([d for d in all_dates] + list(EXCLUDED_DATES))))}")
+    
+    print(f"📅 Found {len(all_dates)} total unique dates across all currencies (after exclusions)")
     
     # Convert to datetime objects, sort by date (most recent first), and take max_days
     date_objects = []
@@ -479,8 +490,8 @@ def get_missing_core_bundle_dates():
     
     print(f"📊 Existing core bundle dates: {len(existing_core_dates)}")
     
-    # Find missing dates
-    missing_dates = all_currency_dates - existing_core_dates
+    # Find missing dates and exclude hardcoded dates
+    missing_dates = all_currency_dates - existing_core_dates - EXCLUDED_DATES
     
     if missing_dates:
         # Sort missing dates (most recent first)
@@ -525,12 +536,7 @@ def serialize_missing_core_curves():
     missing_dates_list = list(missing_dates)[:50]  # Limit to 50 most recent
     
     print(f"\n🎯 Will create core bundles for {len(missing_dates_list)} dates")
-    
-    # Ask for confirmation
-    response = input(f"\nProceed with creating {len(missing_dates_list)} core bundles? (y/n): ").strip().lower()
-    if response != 'y':
-        print("❌ Operation cancelled by user")
-        return False
+    print(f"Auto-proceeding with core bundle creation...")
     
     # Step 2: Load all curves for missing dates
     currencies = list(CURRENCY_CONFIG.keys())
@@ -548,35 +554,17 @@ def serialize_missing_core_curves():
     
     return bundle_results['success_count'] > 0
 
-if __name__ == "__main__":
-    # Ask user what they want to do
-    print("🎯 Core Curve Serializer Options:")
-    print("1. Process all core curves (original functionality)")
-    print("2. Serialize missing core curves (find and create missing core bundles)")
+def main():
+    """Main function for core curve serializer"""
+    # Auto-run missing core curves serialization (most common use case)
+    print("🎯 Auto-running missing core curves serialization...")
     
-    choice = input("\nEnter your choice (1 or 2): ").strip()
-    
-    if choice == "2":
-        # Serialize missing core curves
-        success = serialize_missing_core_curves()
-        if success:
-            print(f"\n✅ Missing core curve serialization completed successfully!")
-        else:
-            print(f"\n❌ Missing core curve serialization failed or was cancelled")
+    # Serialize missing core curves
+    success = serialize_missing_core_curves()
+    if success:
+        print(f"\n✅ Missing core curve serialization completed successfully!")
     else:
-        # Original functionality
-        MAX_DAYS = 10000
-        
-        print(f"📅 Processing {MAX_DAYS} most recent days\n")
-        
-        # Show available curves
-        list_available_curves()
-        
-        # Process all currencies with the specified number of days
-        results = process_core_curves(max_days=MAX_DAYS)
-        
-        if results.get('status') == 'completed':
-            print(f"\n✅ Processing completed successfully!")
-            print(f"📊 {results['bundle_results']['success_count']} core bundles created")
-        else:
-            print(f"\n❌ Processing failed or was cancelled")
+        print(f"\n❌ Missing core curve serialization failed")
+
+if __name__ == "__main__":
+    main()

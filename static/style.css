@@ -115,6 +115,49 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* Max days input styling */
+.max-days-input-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+}
+
+.max-days-label {
+    color: var(--text-secondary);
+    font-family: var(--font-family);
+    font-size: 0.91rem;
+    font-weight: var(--font-weight-regular);
+}
+
+.max-days-input {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    padding: 0.25rem 0.5rem;
+    font-family: var(--font-family);
+    font-size: 0.91rem;
+    font-weight: var(--font-weight-regular);
+    height: 31px;
+    width: 80px;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+}
+
+.max-days-input:hover {
+    background: var(--accent-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-color);
+}
+
+.max-days-input:focus {
+    outline: none;
+    background: var(--accent-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-color);
+}
+
 .load-curves-button {
     background: transparent;
     color: var(--success-color);

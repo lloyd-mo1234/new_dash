@@ -52,12 +52,7 @@ def process_currency(ccy, config, dates, latest_date, current_date):
     print(f"Current date: {current_date}")
     print(f"Total dates to process: {len(dates)}")
     print(f"Date range: {dates[0] if dates else 'N/A'} to {dates[-1] if dates else 'N/A'}")
-    
-    # Ask for confirmation before proceeding
-    response = input(f"\nProceed with {ccy.upper()} curve serialization? (y/n): ").strip().lower()
-    if response != 'y':
-        print(f"Skipping {ccy.upper()} processing...")
-        return 0, 0
+    print(f"Auto-proceeding with {ccy.upper()} curve serialization...")
     
     success_count = 0
     error_count = 0
@@ -148,7 +143,8 @@ def process_currency(ccy, config, dates, latest_date, current_date):
     
     return success_count, error_count
 
-if __name__ == "__main__":
+def main():
+    """Main function for comprehensive multi-currency curve update"""
     print("=== Starting Comprehensive Multi-Currency Curve Update ===")
     
     # Create folders if they don't exist
@@ -273,3 +269,6 @@ if __name__ == "__main__":
     print(f"Currencies processed:  {len([ccy for ccy, (s, e) in total_stats.items() if s + e > 0])}")
     print("="*70)
     print("=== Multi-Currency Curve Update Complete ===")
+
+if __name__ == "__main__":
+    main()

@@ -351,9 +351,11 @@ class XCSwapPosition:
             
             self.last_pnl = total_pnl
             
+            # REVERSE THE PNL DIRECTION
+            reversed_pnl = -total_pnl
             
             return {
-                'pnl': total_pnl, 
+                'pnl': reversed_pnl, 
                 'error': None,
                 'components': component_pnls
             }
@@ -638,10 +640,11 @@ class XCFuturesPosition:
             
             self.last_pnl = total_pnl
             
-            
+            # REVERSE THE PNL DIRECTION
+            reversed_pnl = -total_pnl
             
             return {
-                'pnl': total_pnl,
+                'pnl': reversed_pnl,
                 'error': None,
                 'components': component_pnls,
                 'details': {
@@ -1793,7 +1796,7 @@ class Portfolio:
                     
                     if not carry_result.get('error'):
                         # Multiply by 100 to convert to basis points (e.g., 0.30 -> 30)
-                        trade.carry = carry_result['carry'] * 100
+                        trade.carry = carry_result['carry'] 
                     else:
                         trade.carry = 0.0
                 else:
