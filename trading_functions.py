@@ -1030,6 +1030,60 @@ class Trade:
                 "method": "no_positions"
             }
     
+    def calculate_1d_pnl(self) -> Optional[float]:
+        """
+        Calculate 1-day PnL change from pnl_array
+        Returns the difference between the most recent and previous PnL values
+        
+        Returns:
+            float: 1-day PnL change, or None if insufficient data
+        """
+        print(f"\n🔍 ========== CALCULATE_1D_PNL DEBUG START ==========")
+        print(f"Trade ID: {self.trade_id}")
+        
+        try:
+            # Get the pnl_array from the trade object
+            pnl_array = getattr(self, 'pnl_array', [])
+            
+            print(f"📊 pnl_array exists: {hasattr(self, 'pnl_array')}")
+            print(f"📊 pnl_array type: {type(pnl_array)}")
+            print(f"📊 pnl_array length: {len(pnl_array)}")
+            
+            if len(pnl_array) > 0:
+                print(f"📊 First entry: {pnl_array[0]}")
+                print(f"📊 Last entry: {pnl_array[-1]}")
+                if len(pnl_array) >= 2:
+                    print(f"📊 Second-to-last entry: {pnl_array[-2]}")
+            
+            # Need at least 2 data points to calculate 1d change
+            if len(pnl_array) < 2:
+                print(f"❌ Insufficient data: Need at least 2 data points, only have {len(pnl_array)}")
+                print(f"🔍 ========== CALCULATE_1D_PNL DEBUG END (RETURNED NONE) ==========\n")
+                return None
+            
+            # Get most recent and previous PnL values
+            # pnl_array is list of tuples: [(date, pnl), (date, pnl), ...]
+            most_recent_pnl = pnl_array[-1][1]  # Last entry's PnL
+            previous_pnl = pnl_array[-2][1]     # Second-to-last entry's PnL
+            
+            print(f"💰 Most recent P&L: {most_recent_pnl}")
+            print(f"💰 Previous P&L: {previous_pnl}")
+            
+            # Calculate the difference
+            one_day_pnl = most_recent_pnl - previous_pnl
+            
+            print(f"✅ 1d PnL calculated: {one_day_pnl}")
+            print(f"🔍 ========== CALCULATE_1D_PNL DEBUG END (SUCCESS) ==========\n")
+            
+            return one_day_pnl
+            
+        except Exception as e:
+            print(f"❌ EXCEPTION in calculate_1d_pnl: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            print(f"🔍 ========== CALCULATE_1D_PNL DEBUG END (EXCEPTION) ==========\n")
+            return None
+    
     def calculate_array_pnl(self, futures_tick_data: pd.DataFrame = None, 
                            historical_prices: pd.DataFrame = None) -> Dict[str, Any]:
         """

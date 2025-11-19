@@ -1024,6 +1024,9 @@ def get_trades():
             stored_pnl = getattr(trade, 'stored_pnl', 0.0)
             pnl_timestamp = getattr(trade, 'pnl_timestamp', None)
             
+            # Calculate 1d PnL using the trade's calculate_1d_pnl method
+            one_day_pnl = trade.calculate_1d_pnl()
+            
             trades_data[trade_id] = {
                 'trade_id': trade.trade_id,
                 'typology': trade.typology,
@@ -1035,6 +1038,7 @@ def get_trades():
                 'weighted_avg_price': trade.get_weighted_average_price(),
                 'stored_pnl': stored_pnl,
                 'pnl_timestamp': pnl_timestamp,
+                'one_day_pnl': one_day_pnl,  # Include 1d PnL
                 # CRITICAL FIX: Include secondary data for EFP trades in backup
                 'prices_secondary': getattr(trade, 'prices_secondary', []),
                 'sizes_secondary': getattr(trade, 'sizes_secondary', []),
@@ -1848,8 +1852,22 @@ def restore_portfolio():
             trade.primary_pos_insertion_dt = trade_data.get('primary_pos_insertion_dt', [])
             trade.secondary_pos_insertion_dt = trade_data.get('secondary_pos_insertion_dt', [])
             
+            # CRITICAL FIX: Restore pnl_array for 1d PnL calculation
+            trade.pnl_array = trade_data.get('pnl_array', [])
+            trade.pnl_array_primary = trade_data.get('pnl_array_primary', [])
+            trade.pnl_array_secondary = trade_data.get('pnl_array_secondary', [])
+            
             # Add to portfolio
             portfolio.trades[trade_id] = trade
+        
+        # CRITICAL FIX: If curves are available, reinitialize positions to recreate XC objects
+        # This ensures pnl_array is populated and 1d PnL calculation works
+        if is_curves_loaded():
+            print('✅ Curves available after restore - reinitializing positions...')
+            successful_trades, total_positions = portfolio.initialize_positions()
+            print(f'✅ Reinitialized {total_positions} positions for {successful_trades} trades')
+        else:
+            print('⚠️ No curves available after restore - using stored P&L values only')
         
         # Save restored portfolio to file
         portfolio.save_to_file()

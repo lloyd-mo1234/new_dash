@@ -3098,6 +3098,24 @@
                 }
             }
             
+            // Format 1d PnL display
+            let oneDayPnLDisplay = '--';
+            let oneDayPnLColor = '#cccccc';
+            
+            if (trade.oneDayPnL !== null && trade.oneDayPnL !== undefined) {
+                const oneDayPnLValue = trade.oneDayPnL;
+                oneDayPnLDisplay = `$${oneDayPnLValue.toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                })}`;
+                
+                if (oneDayPnLValue > 0) {
+                    oneDayPnLColor = '#51cf66'; // Green for profit
+                } else if (oneDayPnLValue < 0) {
+                    oneDayPnLColor = '#ff6b6b'; // Red for loss
+                }
+            }
+            
             row.innerHTML = `
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.type}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.identifier}</td>
@@ -3105,7 +3123,7 @@
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.avgEntry.toFixed(2)}%</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor}; font-size: 11px;" class="pnl-cell">${pnlDisplay}</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${oneDayPnLColor}; font-size: 11px;">${oneDayPnLDisplay}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
@@ -3723,6 +3741,13 @@
                                 });
                             }
                         });
+                        
+                        // Get 1d PnL directly from backend (already calculated)
+                        const oneDayPnL = backendTrade.one_day_pnl !== undefined ? backendTrade.one_day_pnl : null;
+                        if (oneDayPnL !== null) {
+                            console.log(`📊 1d PnL for ${trade.identifier}: ${oneDayPnL}`);
+                        }
+                        trade.oneDayPnL = oneDayPnL;
                         
                         storedTrades.push(trade);
                         console.log('✅ Added trade to local storage:', trade.identifier);
