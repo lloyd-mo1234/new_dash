@@ -112,79 +112,16 @@ def filter_data_by_range(df, range_filter):
     return df[df['Date'] >= start_date]
 
 def calculate_total_trade_pnl(trade):
-    """Calculate total P&L for a trade - IMPROVED to use existing positions when available"""
+    """Calculate total P&L for a trade using existing positions"""
     try:
         # Check if curves are available
         from loader import is_curves_loaded
         if not is_curves_loaded():
             return None
         
-        
-        # EFFICIENCY IMPROVEMENT: Try to use existing positions first
-        if (hasattr(trade, 'positions') and 
-            trade.positions and 
-            all(hasattr(pos, 'xc_created') and pos.xc_created for pos in trade.positions)):
-            
-            total_pnl = 0.0
-            
-            for i, position in enumerate(trade.positions):
-                pnl_result = position.calculate_pnl()
-                position_pnl = pnl_result['pnl']
-                total_pnl += position_pnl
-            
-            return total_pnl
-        
-        # EFFICIENCY IMPROVEMENT: If positions exist but XC swaps not created, create them
-        elif (hasattr(trade, 'positions') and trade.positions):
-            total_pnl = 0.0
-            positions_with_xc = 0
-            
-            for i, position in enumerate(trade.positions):
-                if position.create_xc_swaps():
-                    pnl_result = position.calculate_pnl()
-                    position_pnl = pnl_result['pnl']
-                    total_pnl += position_pnl
-                    positions_with_xc += 1
-                else:
-                    continue
-            
-            if positions_with_xc > 0:
-                return total_pnl
-        
-        # FALLBACK: Create temporary positions if no existing positions
-        
-        # Import required functions
-
-        
-        total_pnl = 0.0
-        position_count = 0
-        
-        # Calculate P&L for all positions
-        for i, (price, size) in enumerate(zip(trade.prices, trade.sizes)):
-            if not trade.instrument_details:
-                continue
-                
-            instrument = trade.instrument_details[0]  # Use first instrument
-            handle = f"{trade.trade_id}_position_{i}_temp_pnl_calc"
-            
-            # Use price exactly as stored (no conversion)
-            
-            position = XCSwapPosition(
-                handle=handle,
-                price=price,  # Use price as-is
-                size=size,
-                instrument=instrument
-            )
-            
-            if position.create_xc_swaps():
-                pnl_result = position.calculate_pnl()
-                position_pnl = pnl_result['pnl']
-                total_pnl += position_pnl
-                position_count += 1
-            else:
-                continue
-        
-        return total_pnl
+        # Use trade.calculate_pnl() which handles both primary and secondary positions
+        pnl_result = trade.calculate_pnl()
+        return pnl_result.get('total_pnl', 0.0)
         
     except Exception as e:
         return None
@@ -1547,9 +1484,19 @@ def add_position():
             if trade_type == 'future' or (trade_type == 'efp' and position_type == 'secondary'):
                 # Get futures details
                 unique_instruments = list(set([comp['instrument'] for comp in position.components]))
+                print(f"\n🔍 Fetching Bloomberg data for: {unique_instruments}")
                 futures_df = get_futures_details(unique_instruments)
+                print(f"📊 Bloomberg dataframe received:")
+                if futures_df is not None and not futures_df.empty:
+                    print(futures_df)
+                    print(f"\nDataframe shape: {futures_df.shape}")
+                    print(f"Columns: {futures_df.columns.tolist()}")
+                    print(f"Index: {futures_df.index.tolist()}")
+                else:
+                    print("⚠️ No data received or empty dataframe")
                 pnl_result = position.calculate_pnl(futures_df)
                 position_pnl = pnl_result.get('pnl')
+                print(f"💰 Calculated position PnL: {position_pnl}")
             
             return jsonify({
                 'success': True,

@@ -933,16 +933,7 @@ class Trade:
             self.pnl_array = []
             self.pnl_array_primary = []
             self.pnl_array_secondary = []
-        
-        # Print PnL arrays to console
-        print(f"\n{'='*80}")
-        print(f"Trade: {self.trade_id}")
-        print(f"{'='*80}")
-        print(f"self.pnl_array = {self.pnl_array}")
-        print(f"self.pnl_array_primary = {self.pnl_array_primary}")
-        print(f"self.pnl_array_secondary = {self.pnl_array_secondary}")
-        print(f"{'='*80}\n")
-        
+               
         return True
     
     def calculate_pnl(self, live_price: float = None, use_xc: bool = True, curve_handle: str = None, 
@@ -1083,13 +1074,10 @@ class Trade:
                 
                 try:
                     if isinstance(position, XCSwapPosition):
-                        print(f"📊 Calling calculate_array_pnl for XCSwapPosition...")
                         # Call swap position calculate_array_pnl (no params needed)
                         result = position.calculate_array_pnl()
                         print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
                     elif isinstance(position, XCFuturesPosition):
-                        print(f"📊 Calling calculate_array_pnl for XCFuturesPosition...")
-                        print(f"   - futures_tick_data shape: {futures_tick_data.shape if futures_tick_data is not None else 'None'}")
                         print(f"   - historical_prices shape: {historical_prices.shape if historical_prices is not None else 'None'}")
                         # Call futures position calculate_array_pnl (needs tick data and historical prices)
                         result = position.calculate_array_pnl(futures_tick_data, historical_prices)
@@ -1098,6 +1086,8 @@ class Trade:
                         print(f"❌ Unknown position type: {type(position).__name__}")
                         continue
                     
+                    print(historical_prices)    
+
                     if result.get('error'):
                         print(f"❌ ERROR: {result['error']}")
                         continue
@@ -1148,8 +1138,6 @@ class Trade:
                 
                 try:
                     if isinstance(position, XCFuturesPosition):
-                        print(f"📊 Calling calculate_array_pnl for XCFuturesPosition (SECONDARY)...")
-                        print(f"   - futures_tick_data provided: {futures_tick_data is not None and not futures_tick_data.empty if futures_tick_data is not None else False}")
                         print(f"   - historical_prices provided: {historical_prices is not None and not historical_prices.empty if historical_prices is not None else False}")
                         
                         # DEBUG: Check if futures_tick_data has required instruments
@@ -1174,7 +1162,6 @@ class Trade:
                         result = position.calculate_array_pnl(futures_tick_data, historical_prices)
                         print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
                     elif isinstance(position, XCSwapPosition):
-                        print(f"📊 Calling calculate_array_pnl for XCSwapPosition (SECONDARY)...")
                         # Call swap position calculate_array_pnl
                         result = position.calculate_array_pnl()
                         print(f"✓ Result received: error={result.get('error')}, num_dates={len(result.get('pnl_array', []))}")
@@ -2517,13 +2504,13 @@ def get_fx_detail_df(fx_instruments: List[str]) -> pd.DataFrame:
 def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
     """
     Get futures contract details using Bloomberg BDP
-    Routes to FX handler if first element ends in "curncy"
+    Separates FX instruments (with "curncy" in name) from other futures
     
     Args:
         futures_instruments: List of futures instrument names
         
     Returns:
-        DataFrame with columns: fut_tick_size, fut_tick_val, px_mid
+        DataFrame with columns: fut_tick_size, fut_tick_val, px_mid, crncy
         Index: instrument names
     """
     try:
@@ -2533,75 +2520,100 @@ def get_futures_details(futures_instruments: List[str]) -> pd.DataFrame:
             
             return pd.DataFrame()
         
-        # Check if first element ends in "curncy" - if so, route to FX handler
-        if futures_instruments[0].lower().endswith("curncy"):
-            
-            return get_fx_detail_df(futures_instruments)
-    
-        # Original logic for non-FX futures
-        # Define the fields we want to retrieve (including currency)
-        fields = ['fut_tick_size', 'fut_tick_val', 'px_mid', 'crncy']
+        # Separate instruments into FX (curncy) and non-FX groups
+        fx_instruments = []
+        other_instruments = []
+        
+        for instrument in futures_instruments:
+            if 'curncy' in instrument.lower():
+                fx_instruments.append(instrument)
+            else:
+                other_instruments.append(instrument)
         
         
         
+        # Initialize result dataframe
+        result_df = pd.DataFrame()
         
-        # Use Bloomberg BDP to get the data - correct parameter names are 'tickers' and 'flds'
-        df = blp.bdp(tickers=futures_instruments, flds=fields)
+        # Process FX instruments if any
+        if fx_instruments:
+            
+            fx_df = get_fx_detail_df(fx_instruments)
+            
+            # Add 'crncy' column to fx_df (FX instruments are their own currency)
+            if not fx_df.empty:
+                fx_df['crncy'] = 'FX'  # Mark as FX instrument
+                result_df = pd.concat([result_df, fx_df])
         
-        # CURRENCY CONVERSION: Adjust fut_tick_val by currency to convert to AUD
-        if 'crncy' in df.columns and 'fut_tick_val' in df.columns:
+        # Process non-FX futures instruments if any
+        if other_instruments:
             
             
-            # Create currency tickers for FX rates
-            ccy_tickers = []
-            unique_currencies = df['crncy'].dropna().unique()
+            # Define the fields we want to retrieve (including currency)
+            fields = ['fut_tick_size', 'fut_tick_val', 'px_mid', 'crncy']
             
-            for ccy in unique_currencies:
-                if ccy.upper() != 'AUD':  # Don't need FX rate for AUD
-                    fx_ticker = f"{ccy.upper()}AUD Curncy"
-                    ccy_tickers.append(fx_ticker)
-                    
+            # Use Bloomberg BDP to get the data
+            other_df = blp.bdp(tickers=other_instruments, flds=fields)
             
-            # Get FX rates if we have non-AUD currencies
-            fx_rates = {}
-            if ccy_tickers:
-                try:
-                    
-                    fx_df = blp.bdp(tickers=ccy_tickers, flds=['px_mid'])
-                    
-                    for fx_ticker in fx_df.index:
-                        fx_rate = fx_df.loc[fx_ticker, 'px_mid']
-                        currency = fx_ticker.replace('AUD Curncy', '').strip()
-                        fx_rates[currency] = fx_rate
+            # CURRENCY CONVERSION: Adjust fut_tick_val by currency to convert to AUD
+            if 'crncy' in other_df.columns and 'fut_tick_val' in other_df.columns:
+                
+                
+                # Create currency tickers for FX rates
+                ccy_tickers = []
+                unique_currencies = other_df['crncy'].dropna().unique()
+                
+                for ccy in unique_currencies:
+                    if ccy.upper() != 'AUD':  # Don't need FX rate for AUD
+                        fx_ticker = f"{ccy.upper()}AUD Curncy"
+                        ccy_tickers.append(fx_ticker)
+                        
+                
+                # Get FX rates if we have non-AUD currencies
+                fx_rates = {}
+                if ccy_tickers:
+                    try:
+                        
+                        fx_df_rates = blp.bdp(tickers=ccy_tickers, flds=['px_mid'])
+                        
+                        for fx_ticker in fx_df_rates.index:
+                            fx_rate = fx_df_rates.loc[fx_ticker, 'px_mid']
+                            currency = fx_ticker.replace('AUD Curncy', '').strip()
+                            fx_rates[currency] = fx_rate
+                            
+                            
+                    except Exception as e:
                         
                         
-                except Exception as e:
-                    
-                    
-                    for ccy in unique_currencies:
-                        if ccy.upper() != 'AUD':
-                            fx_rates[ccy.upper()] = 1.0
-            
-            # Apply currency conversion to fut_tick_val
-            
-            for instrument in df.index:
-                if pd.notna(df.loc[instrument, 'crncy']) and pd.notna(df.loc[instrument, 'fut_tick_val']):
-                    currency = df.loc[instrument, 'crncy'].upper()
-                    original_tick_val = df.loc[instrument, 'fut_tick_val']
-                    
-                    if currency == 'AUD':
-                        # Already in AUD, no conversion needed
-                        converted_tick_val = original_tick_val
+                        for ccy in unique_currencies:
+                            if ccy.upper() != 'AUD':
+                                fx_rates[ccy.upper()] = 1.0
+                
+                # Apply currency conversion to fut_tick_val
+                
+                for instrument in other_df.index:
+                    if pd.notna(other_df.loc[instrument, 'crncy']) and pd.notna(other_df.loc[instrument, 'fut_tick_val']):
+                        currency = other_df.loc[instrument, 'crncy'].upper()
+                        original_tick_val = other_df.loc[instrument, 'fut_tick_val']
                         
-                    else:
-                        # Convert to AUD using FX rate
-                        fx_rate = fx_rates.get(currency, 1.0)
-                        converted_tick_val = original_tick_val * fx_rate
-                        df.loc[instrument, 'fut_tick_val'] = converted_tick_val
-                        
-
+                        if currency == 'AUD':
+                            # Already in AUD, no conversion needed
+                            converted_tick_val = original_tick_val
+                            
+                        else:
+                            # Convert to AUD using FX rate
+                            fx_rate = fx_rates.get(currency, 1.0)
+                            converted_tick_val = original_tick_val * fx_rate
+                            other_df.loc[instrument, 'fut_tick_val'] = converted_tick_val
+                            
+            
+            # Concatenate with result
+            if not other_df.empty:
+                result_df = pd.concat([result_df, other_df])
         
-        return df
+        
+        
+        return result_df
         
     except Exception as e:
         
