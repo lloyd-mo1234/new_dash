@@ -1027,6 +1027,9 @@ def get_trades():
             # Calculate 1d PnL using the trade's calculate_1d_pnl method
             one_day_pnl = trade.calculate_1d_pnl()
             
+            # Calculate z-scores for swap trades
+            z_scores = trade.calculate_z_scores()
+            
             trades_data[trade_id] = {
                 'trade_id': trade.trade_id,
                 'typology': trade.typology,
@@ -1039,6 +1042,8 @@ def get_trades():
                 'stored_pnl': stored_pnl,
                 'pnl_timestamp': pnl_timestamp,
                 'one_day_pnl': one_day_pnl,  # Include 1d PnL
+                'carry': getattr(trade, 'carry', 0.0),  # Include carry
+                'z_scores': z_scores,  # Include z-scores (1m, 3m, 6m, 1y)
                 # CRITICAL FIX: Include secondary data for EFP trades in backup
                 'prices_secondary': getattr(trade, 'prices_secondary', []),
                 'sizes_secondary': getattr(trade, 'sizes_secondary', []),

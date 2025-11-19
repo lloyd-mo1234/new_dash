@@ -157,6 +157,141 @@ class XCSwapPosition:
             self.xc_created = False
             return False
     
+    def calculate_carry(self, curve_handle: str = None, carry_type: str = 'roll', carry_horizon: str = '3m'):
+        """
+        Calculate carry for the position by summing carries from all component swaps
+        Uses xcStandardSwapCarry for each component and weights by coefficient
+        
+        Args:
+            curve_handle: Specific curve bundle handle to use (optional, defaults to today's curve)
+            carry_type: Type of carry to calculate ('carry', 'roll', or 'both') - defaults to 'both'
+            carry_horizon: Carry horizon (e.g., '3m', '1y') - defaults to '3m'
+        
+        Returns:
+            dict with carry value and error if any
+        """
+        
+        print(f"\n🔍 ========== CALCULATE_CARRY DEBUG START ==========")
+        print(f"Position handle: {self.handle}")
+        print(f"Position instrument: {self.instrument}")
+        print(f"Carry type: {carry_type}")
+        print(f"Carry horizon: {carry_horizon}")
+        
+        if not self.xc_created or not self.xc_swaps:
+            error_msg = f"XC swaps for {self.handle} not created, cannot calculate carry"
+            print(f"❌ ERROR: {error_msg}")
+            print(f"🔍 ========== CALCULATE_CARRY DEBUG END (ERROR) ==========\n")
+            return {'carry': 0.0, 'error': error_msg}
+        
+        print(f"✓ XC swaps created: {len(self.xc_swaps)} swap components")
+        print(f"✓ Components: {len(self.components)} components")
+        
+        # Generate today's curve bundle name if not provided
+        if curve_handle is None:
+            today_yymmdd = datetime.now().strftime("%y%m%d")
+            curve_handle = f"{today_yymmdd}_core_bundle"
+        
+        print(f"✓ Using curve handle: {curve_handle}")
+        
+        try:
+            total_carry = 0.0
+            component_carries = []
+            
+            print(f"\n{'='*60}")
+            print(f"PROCESSING {len(self.components)} COMPONENTS:")
+            print(f"{'='*60}")
+            
+            for i, comp in enumerate(self.components):
+                print(f"\n--- Component {i+1}/{len(self.components)} ---")
+                print(f"  Instrument: {comp['instrument']}")
+                print(f"  Coefficient: {comp['coefficient']}")
+                print(f"  Template: {comp['template']}")
+                
+                try:
+                    # Get the template and dates for this component
+                    template_name = comp['template']
+                    start_date = comp['start_date']
+                    end_date = comp['end_date']
+                    coefficient = comp['coefficient']
+                    
+                    # Convert dates to string format if they're datetime objects
+                    if isinstance(start_date, datetime):
+                        start_date = start_date.strftime('%Y-%m-%d')
+                    if isinstance(end_date, datetime):
+                        end_date = end_date.strftime('%Y-%m-%d')
+                    
+                    print(f"  Start date: {start_date}")
+                    print(f"  End date: {end_date}")
+                    print(f"  Calling xc.StandardSwapCarry...")
+                    
+                    # Call xcStandardSwapCarry
+                    carry = xc.StandardSwapCarry(
+                        curve_handle=curve_handle,
+                        template_name=template_name,
+                        settlement_date=datetime.now().strftime('%Y-%m-%d'),
+                        start_date=start_date,
+                        end_date=end_date,
+                        discount_curve="",
+                        roll_date="",
+                        carry_type=carry_type,
+                        carry_horizon=carry_horizon
+                    )
+                    
+                    carry_value = float(carry)
+                    print(f"  ✓ Raw carry value: {carry_value:.2f}")
+                    
+                    # Weight by coefficient and add to total
+                    weighted_carry = carry_value * coefficient
+                    print(f"  ✓ Weighted carry (raw * coeff): {carry_value:.2f} * {coefficient} = {weighted_carry:.2f}")
+                    
+                    total_carry += weighted_carry
+                    print(f"  ✓ Running total carry: {total_carry:.2f}")
+                    
+                    component_carries.append({
+                        'instrument': comp['instrument'],
+                        'carry': carry_value,
+                        'coefficient': coefficient,
+                        'weighted_carry': weighted_carry
+                    })
+                    
+                except Exception as e:
+                    print(f"  ❌ EXCEPTION: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    component_carries.append({
+                        'instrument': comp['instrument'],
+                        'carry': 0.0,
+                        'error': str(e)
+                    })
+            
+            # Store carry as attribute
+            self.carry = total_carry
+            
+            print(f"\n{'='*60}")
+            print(f"CARRY CALCULATION COMPLETE")
+            print(f"{'='*60}")
+            print(f"✅ Total carry: {total_carry:.2f}")
+            print(f"✅ Components processed: {len(component_carries)}")
+            print(f"✅ Components with errors: {sum(1 for c in component_carries if 'error' in c)}")
+            print(f"🔍 ========== CALCULATE_CARRY DEBUG END (SUCCESS) ==========\n")
+            
+            return {
+                'carry': total_carry,
+                'error': None,
+                'components': component_carries,
+                'carry_type': carry_type,
+                'carry_horizon': carry_horizon
+            }
+            
+        except Exception as e:
+            error_msg = f"xc.StandardSwapCarry error for {self.handle}: {str(e)}"
+            print(f"❌ EXCEPTION in calculate_carry: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            print(f"🔍 ========== CALCULATE_CARRY DEBUG END (EXCEPTION) ==========\n")
+            return {'carry': 0.0, 'error': error_msg}
+    
     def calculate_pnl(self, curve_handle: str = None):
         """
         Calculate single-date P&L using xc.PresentValue for all component swaps
@@ -720,6 +855,9 @@ class Trade:
         self.pnl_array_primary = []  # List of (date, pnl) tuples for primary positions only
         self.pnl_array_secondary = []  # List of (date, pnl) tuples for secondary positions only
         
+        # Carry attribute - inherited from positions
+        self.carry = 0.0  # Total carry for the trade
+        
     def add_position(self, price: float, size, instrument: str = None, position_type: str = 'primary'):
         """
         Add a position to the trade
@@ -1038,27 +1176,12 @@ class Trade:
         Returns:
             float: 1-day PnL change, or None if insufficient data
         """
-        print(f"\n🔍 ========== CALCULATE_1D_PNL DEBUG START ==========")
-        print(f"Trade ID: {self.trade_id}")
-        
         try:
             # Get the pnl_array from the trade object
             pnl_array = getattr(self, 'pnl_array', [])
             
-            print(f"📊 pnl_array exists: {hasattr(self, 'pnl_array')}")
-            print(f"📊 pnl_array type: {type(pnl_array)}")
-            print(f"📊 pnl_array length: {len(pnl_array)}")
-            
-            if len(pnl_array) > 0:
-                print(f"📊 First entry: {pnl_array[0]}")
-                print(f"📊 Last entry: {pnl_array[-1]}")
-                if len(pnl_array) >= 2:
-                    print(f"📊 Second-to-last entry: {pnl_array[-2]}")
-            
             # Need at least 2 data points to calculate 1d change
             if len(pnl_array) < 2:
-                print(f"❌ Insufficient data: Need at least 2 data points, only have {len(pnl_array)}")
-                print(f"🔍 ========== CALCULATE_1D_PNL DEBUG END (RETURNED NONE) ==========\n")
                 return None
             
             # Get most recent and previous PnL values
@@ -1066,23 +1189,164 @@ class Trade:
             most_recent_pnl = pnl_array[-1][1]  # Last entry's PnL
             previous_pnl = pnl_array[-2][1]     # Second-to-last entry's PnL
             
-            print(f"💰 Most recent P&L: {most_recent_pnl}")
-            print(f"💰 Previous P&L: {previous_pnl}")
-            
             # Calculate the difference
             one_day_pnl = most_recent_pnl - previous_pnl
-            
-            print(f"✅ 1d PnL calculated: {one_day_pnl}")
-            print(f"🔍 ========== CALCULATE_1D_PNL DEBUG END (SUCCESS) ==========\n")
             
             return one_day_pnl
             
         except Exception as e:
-            print(f"❌ EXCEPTION in calculate_1d_pnl: {str(e)}")
+            return None
+    
+    def calculate_z_scores(self) -> Dict[str, Optional[float]]:
+        """
+        Calculate z-scores for swap trades using historical swap data
+        Z-score = (current_rate - mean_rate) / std_dev_rate
+        
+        Calculates z-scores for 1m, 3m, 6m, 1y lookback periods
+        
+        Returns:
+            Dict with keys: 'z_1m', 'z_3m', 'z_6m', 'z_1y'
+            Values are z-scores (float) or None if calculation fails
+        """
+        print(f"\n🔍 ========== CALCULATE_Z_SCORES DEBUG START ==========")
+        print(f"Trade ID: {self.trade_id}")
+        print(f"Typology: {self.typology}")
+        
+        try:
+            # Only calculate z-scores for swap trades
+            if not self.typology or 'swap' not in [t.lower() for t in self.typology]:
+                print(f"❌ Not a swap trade - skipping z-score calculation")
+                print(f"🔍 ========== CALCULATE_Z_SCORES DEBUG END (NOT SWAP) ==========\n")
+                return {
+                    'z_1m': None,
+                    'z_3m': None,
+                    'z_6m': None,
+                    'z_1y': None,
+                    'error': 'Not a swap trade'
+                }
+            
+            print(f"✓ Confirmed swap trade")
+            
+            # Get the instrument
+            if not self.instrument_details or len(self.instrument_details) == 0:
+                print(f"❌ No instrument details available")
+                print(f"🔍 ========== CALCULATE_Z_SCORES DEBUG END (NO INSTRUMENT) ==========\n")
+                return {
+                    'z_1m': None,
+                    'z_3m': None,
+                    'z_6m': None,
+                    'z_1y': None,
+                    'error': 'No instrument details'
+                }
+            
+            instrument = self.instrument_details[0]
+            print(f"✓ Instrument: {instrument}")
+            
+            # Get historical swap data
+            print(f"📊 Fetching historical swap data...")
+            df, error = get_swap_data(instrument)
+            
+            if error or df is None or df.empty:
+                print(f"❌ Failed to get swap data: {error}")
+                print(f"🔍 ========== CALCULATE_Z_SCORES DEBUG END (NO DATA) ==========\n")
+                return {
+                    'z_1m': None,
+                    'z_3m': None,
+                    'z_6m': None,
+                    'z_1y': None,
+                    'error': f'Failed to get swap data: {error}'
+                }
+            
+            print(f"✓ Historical data retrieved: {len(df)} data points")
+            
+            # Sort by date to ensure chronological order
+            df = df.sort_values('Date')
+            
+            # Get the most recent rate (current rate)
+            current_rate = df['Rate'].iloc[-1]
+            current_date = df['Date'].iloc[-1]
+            
+            print(f"✓ Current rate: {current_rate:.4f}%")
+            print(f"✓ Current date: {current_date}")
+            print(f"✓ Date range: {df['Date'].iloc[0]} to {df['Date'].iloc[-1]}")
+            
+            # Define lookback periods in days
+            periods = {
+                '1m': 30,
+                '3m': 90,
+                '6m': 180,
+                '1y': 365
+            }
+            
+            z_scores = {}
+            
+            print(f"\n{'='*60}")
+            print(f"CALCULATING Z-SCORES FOR {len(periods)} PERIODS:")
+            print(f"{'='*60}")
+            
+            for period_name, days in periods.items():
+                print(f"\n--- Period: {period_name} ({days} days) ---")
+                
+                try:
+                    # Calculate the cutoff date for this period
+                    cutoff_date = current_date - timedelta(days=days)
+                    print(f"  Cutoff date: {cutoff_date}")
+                    
+                    # Filter data for this lookback period
+                    period_df = df[df['Date'] >= cutoff_date]
+                    print(f"  Data points in period: {len(period_df)}")
+                    
+                    if len(period_df) < 10:  # Need at least 10 data points for meaningful z-score
+                        print(f"  ⚠️ Insufficient data points (need at least 10)")
+                        z_scores[f'z_{period_name}'] = None
+                        continue
+                    
+                    # Calculate mean and standard deviation
+                    mean_rate = period_df['Rate'].mean()
+                    std_rate = period_df['Rate'].std()
+                    
+                    print(f"  Mean rate: {mean_rate:.4f}%")
+                    print(f"  Std dev: {std_rate:.4f}%")
+                    
+                    # Calculate z-score
+                    if std_rate > 0:
+                        z_score = (current_rate - mean_rate) / std_rate
+                        z_scores[f'z_{period_name}'] = z_score
+                        print(f"  ✓ Z-score: {z_score:.2f}")
+                        print(f"  Calculation: ({current_rate:.4f} - {mean_rate:.4f}) / {std_rate:.4f} = {z_score:.2f}")
+                    else:
+                        print(f"  ⚠️ Zero standard deviation - cannot calculate z-score")
+                        z_scores[f'z_{period_name}'] = None
+                        
+                except Exception as e:
+                    print(f"  ❌ EXCEPTION: {str(e)}")
+                    z_scores[f'z_{period_name}'] = None
+            
+            print(f"\n{'='*60}")
+            print(f"Z-SCORES CALCULATION COMPLETE")
+            print(f"{'='*60}")
+            print(f"Results:")
+            for key, value in z_scores.items():
+                if value is not None:
+                    print(f"  {key}: {value:.2f}")
+                else:
+                    print(f"  {key}: None")
+            print(f"🔍 ========== CALCULATE_Z_SCORES DEBUG END (SUCCESS) ==========\n")
+            
+            return z_scores
+            
+        except Exception as e:
+            print(f"❌ EXCEPTION in calculate_z_scores: {str(e)}")
             import traceback
             traceback.print_exc()
-            print(f"🔍 ========== CALCULATE_1D_PNL DEBUG END (EXCEPTION) ==========\n")
-            return None
+            print(f"🔍 ========== CALCULATE_Z_SCORES DEBUG END (EXCEPTION) ==========\n")
+            return {
+                'z_1m': None,
+                'z_3m': None,
+                'z_6m': None,
+                'z_1y': None,
+                'error': str(e)
+            }
     
     def calculate_array_pnl(self, futures_tick_data: pd.DataFrame = None, 
                            historical_prices: pd.DataFrame = None) -> Dict[str, Any]:
@@ -1522,6 +1786,18 @@ class Portfolio:
             ):
                 successful_trades += 1
                 total_positions += len(trade.positions) + len(trade.positions_secondary)
+                
+                # Calculate carry once on the first primary position only
+                if trade.positions and isinstance(trade.positions[0], XCSwapPosition):
+                    carry_result = trade.positions[0].calculate_carry()
+                    
+                    if not carry_result.get('error'):
+                        # Multiply by 100 to convert to basis points (e.g., 0.30 -> 30)
+                        trade.carry = carry_result['carry'] * 100
+                    else:
+                        trade.carry = 0.0
+                else:
+                    trade.carry = 0.0
                 
                 
         

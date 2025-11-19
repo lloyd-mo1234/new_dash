@@ -714,11 +714,11 @@
                             <th style="width: 80px;">Total 01</th>
                             <th style="width: 80px;">P&L</th>
                             <th style="width: 80px;">1d PnL</th>
-                            <th style="width: 80px;">Col 8</th>
-                            <th style="width: 80px;">Col 9</th>
-                            <th style="width: 80px;">Col 10</th>
-                            <th style="width: 80px;">Col 11</th>
-                            <th style="width: 80px;">Col 12</th>
+                            <th style="width: 80px;">Carry</th>
+                            <th style="width: 80px;">1m Z</th>
+                            <th style="width: 80px;">3m Z</th>
+                            <th style="width: 80px;">6m Z</th>
+                            <th style="width: 80px;">1y Z</th>
                             <th style="width: 80px;">Col 13</th>
                             <th style="width: 80px;">Col 14</th>
                             <th style="width: 60px;"></th>
@@ -3116,6 +3116,42 @@
                 }
             }
             
+            // Format carry display (only for swap trades)
+            let carryDisplay = '--';
+            let carryColor = '#cccccc';
+            
+            if ((trade.type === 'swap' || trade.type === 'efp') && trade.carry !== null && trade.carry !== undefined) {
+                carryDisplay = trade.carry.toFixed(2);
+                
+                if (trade.carry > 0) {
+                    carryColor = '#51cf66'; // Green for positive carry
+                } else if (trade.carry < 0) {
+                    carryColor = '#ff6b6b'; // Red for negative carry
+                }
+            }
+            
+            // Format z-score displays (only for swap trades)
+            let zScore1mDisplay = '--';
+            let zScore3mDisplay = '--';
+            let zScore6mDisplay = '--';
+            let zScore1yDisplay = '--';
+            
+            if ((trade.type === 'swap' || trade.type === 'efp') && trade.z_scores) {
+                // CRITICAL FIX: Keys are 'z_1m', 'z_3m', etc., not '1m', '3m', etc.
+                if (trade.z_scores['z_1m'] !== null && trade.z_scores['z_1m'] !== undefined) {
+                    zScore1mDisplay = trade.z_scores['z_1m'].toFixed(2);
+                }
+                if (trade.z_scores['z_3m'] !== null && trade.z_scores['z_3m'] !== undefined) {
+                    zScore3mDisplay = trade.z_scores['z_3m'].toFixed(2);
+                }
+                if (trade.z_scores['z_6m'] !== null && trade.z_scores['z_6m'] !== undefined) {
+                    zScore6mDisplay = trade.z_scores['z_6m'].toFixed(2);
+                }
+                if (trade.z_scores['z_1y'] !== null && trade.z_scores['z_1y'] !== undefined) {
+                    zScore1yDisplay = trade.z_scores['z_1y'].toFixed(2);
+                }
+            }
+            
             row.innerHTML = `
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.type}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.identifier}</td>
@@ -3124,11 +3160,11 @@
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">${trade.totalSize.toFixed(0)}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${pnlColor}; font-size: 11px;" class="pnl-cell">${pnlDisplay}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${oneDayPnLColor}; font-size: 11px;">${oneDayPnLDisplay}</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
-                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; color: ${carryColor}; font-size: 11px;">${carryDisplay}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; font-size: 11px;">${zScore1mDisplay}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; font-size: 11px;">${zScore3mDisplay}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; font-size: 11px;">${zScore6mDisplay}</td>
+                <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer; font-size: 11px;">${zScore1yDisplay}</td>
                 <td onclick="openTradeModal('${trade.id}')" style="cursor: pointer;">--</td>
                 <td style="text-align: center; padding: 4px;">
                     <button class="btn-pnl" onclick="showTradePnL('${trade.id}'); event.stopPropagation();" style="position: static;">PnL</button>
@@ -3748,6 +3784,20 @@
                             console.log(`📊 1d PnL for ${trade.identifier}: ${oneDayPnL}`);
                         }
                         trade.oneDayPnL = oneDayPnL;
+                        
+                        // Get carry directly from backend (for swap trades)
+                        const carry = backendTrade.carry !== undefined ? backendTrade.carry : null;
+                        if (carry !== null) {
+                            console.log(`📊 Carry for ${trade.identifier}: ${carry}`);
+                        }
+                        trade.carry = carry;
+                        
+                        // Get z-scores directly from backend (for swap trades)
+                        const zScores = backendTrade.z_scores || null;
+                        if (zScores) {
+                            console.log(`📊 Z-scores for ${trade.identifier}:`, zScores);
+                        }
+                        trade.z_scores = zScores;
                         
                         storedTrades.push(trade);
                         console.log('✅ Added trade to local storage:', trade.identifier);

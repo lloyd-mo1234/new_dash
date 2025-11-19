@@ -1,9 +1,37 @@
 {
   "portfolio_metadata": {
-    "last_pnl_update": "2025-11-19T01:33:20.148567",
-    "total_portfolio_pnl": 5562678.727394529
+    "last_pnl_update": "2025-11-19T02:43:49.595334",
+    "total_portfolio_pnl": 2287706.069074503
   },
   "trades": {
+    "swa1": {
+      "trade_id": "swa1",
+      "typology": [
+        "swap"
+      ],
+      "secondary_typology": null,
+      "group_id": "",
+      "prices": [
+        5
+      ],
+      "sizes": [
+        100
+      ],
+      "instrument_details": [
+        "aud.10y10y"
+      ],
+      "stored_pnl": -2835872.680925496,
+      "pnl_timestamp": "2025-11-19T02:43:49.595334",
+      "prices_secondary": [],
+      "sizes_secondary": [],
+      "instrument_details_secondary": [],
+      "stored_pnl_primary": null,
+      "stored_pnl_secondary": null,
+      "primary_pos_insertion_dt": [
+        "2025-08-19"
+      ],
+      "secondary_pos_insertion_dt": []
+    },
     "t2": {
       "trade_id": "t2",
       "typology": [
@@ -20,8 +48,8 @@
       "instrument_details": [
         "audusd curncy"
       ],
-      "stored_pnl": 3866863.1249999925,
-      "pnl_timestamp": "2025-11-19T01:33:20.148567",
+      "stored_pnl": 3887616.249999999,
+      "pnl_timestamp": "2025-11-19T02:43:49.595334",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],
@@ -49,7 +77,7 @@
         "xmz5 comdty"
       ],
       "stored_pnl": 1235962.5,
-      "pnl_timestamp": "2025-11-19T01:33:20.148567",
+      "pnl_timestamp": "2025-11-19T02:43:49.595334",
       "prices_secondary": [],
       "sizes_secondary": [],
       "instrument_details_secondary": [],
