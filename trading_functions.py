@@ -583,11 +583,22 @@ class XCFuturesPosition:
             print(f"   ✓ Both futures_tick_data and historical_prices are available")
             print(f"   - futures_tick_data shape: {futures_tick_data.shape}")
             print(f"   - historical_prices shape: {historical_prices.shape}")
+            print(f"   - historical_prices index type: {type(historical_prices.index[0]) if len(historical_prices.index) > 0 else 'empty'}")
+            print(f"   - start_date: {start_date} (type: {type(start_date)})")
+            print(f"   - end_date: {end_date} (type: {type(end_date)})")
+            
+            # Convert historical_prices index to datetime.date for consistent comparison
+            historical_prices = historical_prices.copy()
+            historical_prices.index = pd.to_datetime(historical_prices.index).date
+            
+            print(f"   - After conversion, index type: {type(historical_prices.index[0]) if len(historical_prices.index) > 0 else 'empty'}")
             
             # Filter dates that fall within our range (inclusive)
-            # historical_prices index should be datetime objects
+            # Both historical_prices.index and start_date/end_date are now datetime.date objects
             mask = (historical_prices.index >= start_date) & (historical_prices.index <= end_date)
             filtered_prices = historical_prices[mask]
+            
+            print(f"   - filtered_prices shape after date filtering: {filtered_prices.shape}")
             
             if filtered_prices.empty:
                 error_msg = f"No prices found between {start_date} and {end_date}"
@@ -1431,12 +1442,13 @@ class Portfolio:
         """Initialize positions for all trades in the portfolio using new position system"""
         
         
-        # Get futures tick data if we have futures trades and it's not already loaded
-        if self.futures_tick_data is None:
-            futures_instruments = get_futures_instrument_names(self)
-            if futures_instruments:
-                
-                self.futures_tick_data = get_futures_details(futures_instruments)
+        # ALWAYS refresh futures tick data to include any newly added instruments
+        futures_instruments = get_futures_instrument_names(self)
+        if futures_instruments:
+            
+            self.futures_tick_data = get_futures_details(futures_instruments)
+        else:
+            self.futures_tick_data = None
         
         # Get historical prices for futures if needed
         historical_prices = None
